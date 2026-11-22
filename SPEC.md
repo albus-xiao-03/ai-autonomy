@@ -35,7 +35,7 @@ The demo question: *Can an AI mayor keep a city stable under pressure?*
 - [CHAT] **Non-square land.** The terrain and land shape follow the reference map (rivers, harbor, irregular coastline), not a square grid.
 - [CHAT] The **building palette must always stay available** (placing buildings must not be removed when other tools change).
 - [CHAT] Roads connect **seamlessly** (no overlapping roads that just "go over" each other). Bridges and tunnels are used where roads cross.
-- [DOC] **Historical landmarks cannot be moved or replaced.**
+- [DOC] **Historical landmarks cannot be moved or replaced.** [CHAT, 2026-11-22 engine brief] Neither can the fixed I-93 geometry, and no indirect edit (a map save, a live edit, a disruption or a mayor order) may bypass a lock. Landmarks a map author designates are locked too, unless the author explicitly unlocks them during setup.
 - [CHAT, changed 2026-11-22] **Routine** residents are always law-abiding. **Autonomous (LLM)** residents may choose a small set of unlawful actions (speeding, vandalism, road blockade). Police patrols stop them.
 - [CHAT] Close unused dev ports. The game currently runs on port 8712 (8711 is retired).
 - [CHAT] Claims must be verifiable. Keep the README honest about limits so another model can fact-check.
@@ -56,6 +56,7 @@ The demo question: *Can an AI mayor keep a city stable under pressure?*
 - [CHAT] **Predetermined, famous office and residential areas** are placed on the map. The player connects them with roads and watches the city run. These are fixed (see landmark rule).
 - [CHAT] **Fixed highway:** I-93 (Central Artery / Thomas P. O'Neill Jr. Tunnel) with **predetermined exits** and **underground tunnel sections**. It runs from one edge of the map to the other. As levels expand, it continues through the newly visible area.
 - [CHAT] Regional through-traffic (cars entering and leaving at the map edges) is **inactive for now**. Resident cars use local roads.
+- [CHAT, 2026-11-22 engine brief] **Maps and runs.** The engine ships a playable, connected Boston template and a saved variant (one shortcut removed, one author-designated protected landmark). Players can name, save, reopen and launch a map revision. Every run records the map id, revision and content hash it launched with. Before a revision is saved or launched, the engine checks road endpoints, building access references, landmark protections and that police (PD), fire (FD) and medical facilities exist and are reachable.
 
 ## 5. Levels and progression
 
@@ -74,6 +75,7 @@ The demo question: *Can an AI mayor keep a city stable under pressure?*
 - [PROPOSED] Autonomous residents choose from a fixed menu of allowed actions (go to work, shop, visit a park, go home, join a protest, evacuate), and the small LLM only picks among them. This keeps them fast and safe.
 - [PROPOSED] Show a small "thought" bubble on a selected resident so the audience can see the difference between routine and autonomous residents.
 - [PROPOSED] Performance target: at least 200 simulated residents at 30+ FPS, with only a small number of LLM resident calls in flight at once.
+- [CHAT, 2026-11-22 engine brief] **Exact seeded mix.** The engine chooses which residents are autonomous: exactly `round_half_up(population × ratio)` of them, seeded by the run (6 residents at 50 % gives 3). The engine configuration selects the resident model, the engine checks that it is installed locally, and resident inference stays local even when the model is missing (residents then follow their routine).
 
 ## 7. Building and roads (player tools)
 
@@ -110,6 +112,15 @@ The demo question: *Can an AI mayor keep a city stable under pressure?*
 - [PROPOSED] The mayor receives a compact state summary each decision (satisfaction per district, active events, service capacity, traffic congestion) and returns **strict JSON**. Invalid output falls back safely and is logged.
 - [PROPOSED] Decision cadence: one decision per N in-game minutes (set N so Qwen's latency never freezes the game).
 
+**Agreed engine rules [CHAT, 2026-11-22 engine brief]** (they replace the proposed action table above where they conflict):
+
+- **Autonomous civil service (911).** Dispatch runs every tick without the mayor and without any model call. Incidents are served by severity, then age, then stable id. Each needed department slot gets the qualified, available unit with the shortest reachable travel time, as reported by the current game road graph. Unmet demand waits in a queue with a reason. A unit serves one incident at a time and is released after service.
+- **Exceptional orders.** The mayor may issue an exceptional department-level order (send units of one department to an incident, or prioritize an incident for a department). It cannot site, move or remove a service facility. Each order is validated, then recorded with its origin, incident, units, outcome and authority effect.
+- **Political cost of orders.** Frequent, distinct accepted orders erode political authority: a rolling allowance (proposed default: 2 orders per 120 ticks) and a penalty per order beyond it (proposed default: 5 authority points). Both are tuning defaults. Routine dispatch costs nothing. A retried order, or one order that sends several units, counts once.
+- **Decisions are run-scoped and replayable.** Every request and reply carries run, epoch, actor, decision id, observation tick and apply tick. A reply takes effect at its fixed apply tick, never at its wall-clock arrival. Late replies after a reset are discarded, and retries are idempotent. Queues and provider waits are bounded.
+- **Failure.** A failed mayor inference or a simulated mayor outage logs one hold, and dispatch keeps running. An explicitly selected rule-based (baseline) mayor keeps its own label. When the game cannot reach the engine at all, it labels this **degraded operation**.
+- **Replay.** A run replays from its pinned map, recorded decisions, interventions and game observations, with inference disabled.
+
 ## 9. Events (the "making its life tough" part)
 
 - [DOC] Predetermined **protests, natural disasters, corruption**.
@@ -125,6 +136,7 @@ The demo question: *Can an AI mayor keep a city stable under pressure?*
 | Corruption scandal | a department | lowers trust, makes some orders get refused |
 
 - [PROPOSED] A **"Trigger event" panel** so the presenter can fire events on demand during the demo.
+- [CHAT, 2026-11-22 engine brief] **Disruptions: exactly seven types.** Traffic, Outage, Gas Leakage, Flood, Storm, Snowstorm and Heavy Rain. Each can occur automatically (seeded by the run), on a schedule, or by user injection. The engine records every disruption with its application tick. Each type's effects and recovery live in `data/catalogs/disruptions.v1.yaml` and are confirmed with the interface agent. This replaces the proposed catalog above: protests now come from residents through the political system (Section 10), and the earthquake and fire presets leave the disruption catalog.
 
 ## 10. Reward function (resident satisfaction)
 
@@ -137,6 +149,7 @@ The demo question: *Can an AI mayor keep a city stable under pressure?*
   - access to housing, jobs, shops, and parks
 - [PROPOSED] The score is **always visible on screen**, with a small history graph. It is also fed into the mayor's prompt so the mayor can see the effect of its choices.
 - [PROPOSED] Log score before and after each mayor action so we can show "the mayor's decision improved the city by X."
+- [CHAT, 2026-11-22 engine brief] **Political authority is separate from satisfaction.** The engine tracks the mayor's political authority on its own; satisfaction never sets it. Residents can organize (a recall petition), protest, vote (a recall ballot) and remove the mayor through the political system. A run reaches its configured duration unless a removal succeeds.
 
 ## 11. Demo requirements (Sundai Hack 150, 3D Worlds)
 

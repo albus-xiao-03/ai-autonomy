@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Specification | [`SPEC.md` Part B](../SPEC.md) (commit `3810aa8`) |
-| Plan status | Final: the implementation baseline, with decisions recorded in §13. Implementation has not started |
+| Plan status | Final: the implementation baseline, with decisions recorded in §13. M0 is done. Since the hybrid merge, engine work follows **Appendix B** (hybrid plan and live checkpoint); §1–§14 describe the long-term engine-owns-everything design |
 | Prepared | 2026-11-22 |
 | Stack (decided) | Python 3.14 engine (uv) · TypeScript + Vite + Three.js frontend (Node 24) · Ollama serving Qwen GGUF locally |
 
@@ -2235,3 +2235,75 @@ Plan: §5.1 (lines 355–421), §5.2 (423–507, M1 parts), §5.4 roads and move
 - `configure.config` gains `population` and `llm_ratio_bp` (0–10000).
 - `RunStatus` gains `validation: {ok, failures: [{code, entity_id, message}], intentional_overrides: [...]}`. `start` is rejected while `ok` is false.
 - `inspect` accepts resident, facility, landmark and segment ids.
+
+---
+
+# Appendix B — Hybrid R1 engine plan and live checkpoint (engine brief of 2026-11-22)
+
+This appendix is the plan and resume point for the engine work requested in the engine brief of 2026-11-22. It supersedes §1–§14 wherever they assume that the engine owns the whole world. Product rules agreed in the brief are recorded in `SPEC.md` Part A (§2, §4, §6, §8, §9, §10). The wire contract for the interface agent is in `docs/contract.md`.
+
+## B.1 Ownership and working rules
+
+| Who | Owns |
+|---|---|
+| Engine owner (this plan) | `aiautonomy/engines/`, map and run persistence, `tests/engines/`, `data/`, `config/`, `docs/`, `SPEC.md`, the shared API contract, and the generated `aiautonomy/interfaces/net/protocol.gen.ts` (`make protocol` only) |
+| Interface agent | `game/`, `aiautonomy/interfaces/` (except the generated types), `tests/interfaces/` |
+
+- The baseline is `main` at `7e20137`. Each verified feature is one commit on the checked-out branch, never pushed. The owner handles branches and pushes.
+- No paid API call. The API mayor is verified only through an injected client that talks to `FakeAnthropic` on loopback.
+- One Ollama model in memory at a time. Unload models after live checks. Close temporary ports.
+- `node tests/*.cjs` checks may load `game/*.js` read-only to compare the engine's fixtures with the game's own routing code. They never modify `game/`.
+
+## B.2 Architecture (hybrid, kept)
+
+- **The game** advances Boston's clock, traffic, incidents and physical outcomes: unit motion, arrivals and service.
+- **The engine** validates every game observation and owns everything else in its records:
+  - 911 dispatch allocations
+  - mayor decisions and exceptional orders
+  - order penalties (political authority)
+  - political adjudication
+  - the disruption schedule of record
+- **One synchronous channel per run** (details in `docs/contract.md`):
+  1. `POST /api/runs` launches a run pinned to `{map id, revision, content sha256}`.
+  2. The game posts one `TickObservation` per game tick to `POST /api/runs/{id}/ticks`.
+  3. The engine runs the SIM-02 phases for that tick and returns a `TickOutcome`. The game applies the outcome's effects from the next tick.
+- **Mayor opportunities** are started by the engine. A decision's apply tick is fixed when it is requested (`observation_tick + 5`). At that tick the engine waits for the reply, up to a bounded deadline, and otherwise records one hold.
+- **Resident decisions** are requested by the game, return at once, and apply at `tick + 2`.
+- **Legacy routes.** `/api/brain/*` keeps serving the current game during the transition, with its records moved into the app's run store. The module-global `_LOG` is removed.
+- **Unchanged:** the M0 toy engine (`/ws`, `aia run --headless`, toy replay).
+
+## B.3 Feature sequence and status (live checkpoint)
+
+| # | Feature | Status | Commit | Evidence |
+|---|---|---|---|---|
+| C0 | Plan and agreed product rules (`SPEC.md` Part A) | done | (this commit) | Docs only |
+| C1 | Contract v1, examples, generated types | not started | — | |
+| C2 | Maps: template, variant, validation, locks, persistence | not started | — | |
+| C3 | Ollama lock held until the underlying call finishes | in progress | — | |
+| C4 | Hybrid run core: config, run store, tick pipeline, records, seeded residents | not started | — | |
+| C5 | 911 dispatch | not started | — | |
+| C6 | Seven disruptions: catalog, automatic, scheduled, injected | not started | — | |
+| C7 | Mayor decisions, exceptional orders, authority cost, legacy routes on the run store | not started | — | |
+| C8 | Politics: petition, protest, recall vote, removal | not started | — | |
+| C9 | Local resident inference: configured models, installed-artifact check | not started | — | |
+| C10 | Hybrid replay and the Boston trace checked against the game | not started | — | |
+| C11 | Part B reconciliation, status tables, handoff | not started | — | |
+
+Every feature commit must pass `make check-engines`, `make check-schema` and `make check-trace`. After a protocol change it must also pass `npm run typecheck` and `npm test`, and every `node tests/*.cjs` the feature touches.
+
+## B.4 Decisions and interpretations
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-11-22 | Engine effects decided at tick `t` apply in the game from `t + 1`, and one observation is posted per tick | The game must not simulate past an allocation it has not received. One tick per request keeps every rule a plain per-tick rule and makes replay exact |
+| 2026-11-22 | A mayor reply always applies at its fixed apply tick. The engine waits for it at that tick, up to the deadline, then holds | Reply timing must never depend on the wall clock (SIM-03, SIM-04) |
+| 2026-11-22 | Reset = the old run is recorded as interrupted, a new run id is created with epoch + 1, and in-flight requests are cancelled | Same semantics as the toy session (SIM-05, END-05) |
+| 2026-11-22 | Mayor inference failure or timeout records a hold, never a substitute order. The legacy route keeps its old fallback behavior only until the game migrates | MAY-08 forbids a substitute mayor; the brief asks for one logged hold |
+| 2026-11-22 | The seven canonical game landmarks and the I-93 geometry hash can never be unlocked. User-designated landmarks are locked by default; only an explicit `unlock` list in a setup save unlocks them | Brief §2; CITY-03 |
+| 2026-11-22 | Removal mechanisms: a recall vote, and protest-driven withdrawal of authority. Forceful removal (POL-06) is deferred unless the owner asks for it | Brief §3 names organizing, protest, voting and removal; scope control |
+
+## B.5 Resuming
+
+1. Read this appendix, `docs/contract.md` and `SPEC.md` Part A.
+2. Run `uv sync --frozen && npm ci`, then `make check-engines check-schema check-trace`. All should pass.
+3. Continue with the first row of B.3 that is not done. Update the row, commit with the evidence, and check the 5-hour usage window before starting the next feature.
