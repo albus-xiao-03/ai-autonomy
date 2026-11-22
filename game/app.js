@@ -18,7 +18,7 @@
       if(valid&&left(b.type)>0&&!CityPlan.buildingError(b))CityPlan.plan.buildings.push({...b,area:false});
     }
     if(saved?.controls)for(const c of saved.controls)if(CityPlan.controlTypes[c.kind]&&CityPlan.junctions().some(j=>CityPlan.dist(c,j)<.1)&&(!c.approach||(Number.isFinite(c.approach.x)&&Number.isFinite(c.approach.z))))CityPlan.plan.controls.push(c);
-    settings=localStorage.getItem('borough-mayor')||'qwen';$('autoIncidents').checked=localStorage.getItem('borough-auto-incidents')!=='false';
+    settings=localStorage.getItem('borough-mayor')||'local';if(settings==='qwen')settings='local';else if(!['local','baseline','api'].includes(settings))settings='baseline';$('mayorBrain').value=settings;$('autonomy').value=localStorage.getItem('borough-autonomy')??'30';$('autoIncidents').checked=localStorage.getItem('borough-auto-incidents')!=='false';
   }catch{CityPlan.seedArcade();}
   CityPlan.subdividePlayerRoads();CityPlan.changed();CityPlan.pruneControls();
   function save(){try{localStorage.setItem('borough-levels-v1',JSON.stringify({level:CityPlan.level,roads:CityPlan.plan.roads,controls:CityPlan.plan.controls,buildings:CityPlan.plan.buildings.filter(b=>!b.area)}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
@@ -125,6 +125,26 @@
   }
   document.querySelectorAll('[data-road]').forEach(button=>button.onclick=()=>choose(button.dataset.road));
   document.querySelectorAll('[data-event]').forEach(button=>button.onclick=()=>choose('incident:'+button.dataset.event));
+  $('mayorBrain').onchange=()=>{settings=$('mayorBrain').value;try{localStorage.setItem('borough-mayor',settings);}catch{}notice('Mayor brain changes apply on the next run.');render();};
+  $('autonomy').oninput=()=>{$('mixValue').textContent=$('autonomy').value+'%';try{localStorage.setItem('borough-autonomy',$('autonomy').value);}catch{}};
+  let engineInfo=null;
+  async function pollEngine(){
+    try{const r=await fetch('http://127.0.0.1:8787/api/brain/status');engineInfo=await r.json();}catch{engineInfo=null;}
+    $('engineStatus').textContent=engineInfo?'Engine online · Ollama '+(engineInfo.ollama?'ready':'offline')+(engineInfo.api_available?' · cloud API enabled':' · cloud API off'):'Engine offline · civic controller fallback';
+  }
+  pollEngine();setInterval(pollEngine,5000);
+  let scoreHistory=[];
+  function drawScore(s){
+    const c=$('scoreGraph'),g=c.getContext('2d');
+    if(s&&(!scoreHistory.length||scoreHistory.at(-1).minute!==s.minute))scoreHistory.push({minute:s.minute,score:s.satisfaction});
+    if(scoreHistory.length>400)scoreHistory=scoreHistory.filter((_,i)=>i%2===0);
+    g.clearRect(0,0,c.width,c.height);
+    g.strokeStyle='#3b4b40';g.beginPath();g.moveTo(0,c.height/2);g.lineTo(c.width,c.height/2);g.stroke();
+    if(scoreHistory.length<2)return;
+    const t0=360,t1=1320;g.strokeStyle='#f4cf6a';g.lineWidth=2;g.beginPath();
+    scoreHistory.forEach((p,i)=>{const x=(p.minute-t0)/(t1-t0)*c.width,y=c.height-2-(p.score/100)*(c.height-4);i?g.lineTo(x,y):g.moveTo(x,y);});
+    g.stroke();
+  }
   $('autoIncidents').onchange=()=>{sim?.setAutoIncidents($('autoIncidents').checked);try{localStorage.setItem('borough-auto-incidents',$('autoIncidents').checked);}catch{}};
   document.querySelectorAll('[data-control]').forEach(button=>button.onclick=()=>choose(button.dataset.control));
   $('undo').onclick=()=>{const snapshot=undo.pop();if(!snapshot)return;const old=JSON.parse(snapshot);CityPlan.plan.buildings=old.buildings;CityPlan.plan.roads=old.roads;CityPlan.plan.controls=old.controls||[];CityPlan.changed();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Last edit undone.');};
@@ -186,7 +206,11 @@
     const complete=!!s?.finished&&s.workersArrived===s.population&&s.atHome===s.population&&allConnected&&!(s.incidents||[]).some(i=>i.status!=='resolved');
     $('nextLevel').hidden=!complete||CityPlan.level===4;
     $('levelGoal').textContent=complete?(CityPlan.level===4?'Boston is connected. All levels complete.':'Level complete. Expand the map when you’re ready.'):'Connect homes and offices. Keep residents safe and restore roads after incidents.';
-    $('engine').textContent=s?.mayorMode || (settings==='qwen'?'Local Qwen · 8B':'Civic controller');
+    $('engine').textContent=s?.mayorMode || ({local:'Qwen 3 · 8B',baseline:'Rule-based mayor',api:'Claude API mayor'}[settings]);
+    $('mixValue').textContent=$('autonomy').value+'%';$('autonomy').disabled=!!s&&!s.finished;$('mayorBrain').disabled=!!s&&!s.finished;
+    $('crimes').textContent=s?s.crimes:0;drawScore(s);
+    if(s?.residentThoughts?.length){$('residentThoughts').replaceChildren(...s.residentThoughts.slice(-5).reverse().map(t=>{const row=document.createElement('div');row.className='thoughtRow'+(['speeding','vandalism','road_blockade'].includes(t.action)?' crime':'');const b=document.createElement('b');b.textContent='#'+t.id+' · '+t.action.replace('_',' ')+' · '+time(t.minute);const p=document.createElement('div');p.textContent='“'+t.thought+'”';row.append(b,p);return row;}));}
+    else if(s)$('residentThoughts').replaceChildren(Object.assign(document.createElement('small'),{textContent:s.autonomousCount?s.autonomousCount+' autonomous residents · first thoughts arrive within the hour':'All residents follow routines (slider at 0%).'}));
     if(s) {
       const rows=(items)=>items.map(([key,value])=>{const row=document.createElement('div');row.className='statrow';const name=document.createElement('span');name.textContent=key;const val=document.createElement('b');val.textContent=value;row.append(name,val);return row;});
       $('routines').replaceChildren(...rows([['At home',s.atHome],['In transit',s.commuting],['At work',s.atWork],['Socializing',s.socializing],['No route',s.stranded||0],['Sheltered',s.sheltered||0],['Active incidents',(s.incidents||[]).filter(i=>!['resolved','averted'].includes(i.status)).length]]));
@@ -226,7 +250,7 @@
     if(!CityPlan.plan.roads.length){notice('Draw roads to connect your homes and workplaces.');return;}
     if(!homes.some(h=>offices.some(o=>CityPlan.route(h,o)&&CityPlan.route(o,h)))){notice('Connect at least one residential area to an office area with a route in both directions.');return;}
     roadStart=curveControl=null;world.ghost(null);
-    sim?.dispose();sim=CitySim.start(lots,settings==='qwen'?{modelEndpoint:'http://localhost:11434/api/chat',model:'qwen3:8b',autoIncidents:$('autoIncidents').checked}:{autoIncidents:$('autoIncidents').checked});
+    sim?.dispose();scoreHistory=[];sim=CitySim.start(lots,{engine:'http://127.0.0.1:8787',mayorBackend:settings,autonomy:Number($('autonomy').value),residentModel:'qwen3:1.7b',autoIncidents:$('autoIncidents').checked});
     paused=false;selection=null;drawPalette();notice('The city is running. Watch the mayor’s orders and their outcomes.');render();
   }
   $('run').onclick=()=>{if(!sim||sim.getState().finished)start();else{paused=!paused;render();}};
@@ -245,10 +269,10 @@
   $('view').onclick=()=>world.toggleView();
   $('settings').onclick=()=>{
     const body=dialog('Mayor settings'),label=document.createElement('label');label.textContent='Decision engine ';const select=document.createElement('select');
-    select.add(new Option('Built-in civic controller','local'));select.add(new Option('Qwen 3 · local Ollama','qwen'));select.value=settings;label.append(select);body.append(label);
-    const p=document.createElement('p');p.className='muted';p.textContent='Changes apply on the next run. Qwen uses qwen3:8b through Ollama on localhost:11434. The civic controller takes over when the model is unavailable.';body.append(p);
+    select.add(new Option('Qwen 3 · 8B (local Ollama)','local'));select.add(new Option('Rule-based (no model)','baseline'));select.add(new Option('Claude API (cloud)','api'));select.value=settings;label.append(select);body.append(label);
+    const p=document.createElement('p');p.className='muted';p.textContent='Changes apply on the next run. Decisions come from the Python engine (uv run aia serve, port 8787). Qwen uses qwen3:8b via local Ollama. The Claude API needs AIA_ALLOW_PAID_API=1 and ANTHROPIC_API_KEY set where the engine runs. If the engine is offline, the civic controller takes over.';body.append(p);
     if(sim){const info=document.createElement('p');info.textContent='Current engine · '+sim.getState().mayorMode;body.append(info);}
-    select.onchange=()=>{settings=select.value;try{localStorage.setItem('borough-mayor',settings);}catch{}render();};
+    select.onchange=()=>{settings=select.value;$('mayorBrain').value=settings;try{localStorage.setItem('borough-mayor',settings);}catch{}render();};
   };
   syncSites();drawPalette();render();
   let previousFrame=performance.now(),lastUI=0;

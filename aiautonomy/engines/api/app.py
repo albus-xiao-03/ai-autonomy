@@ -14,8 +14,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from aiautonomy.engines.api.brain import router as brain_router
 from aiautonomy.engines.api.protocol import HealthResponse
 from aiautonomy.engines.api.session import EngineSession, QueueClient, SessionOptions
 from aiautonomy.engines.core.paths import repo_root
@@ -65,6 +67,14 @@ def create_app(options: SessionOptions, *, serve_frontend: bool = True) -> FastA
         redoc_url=None,
         openapi_url="/api/openapi.json",
     )
+    # The browser game is served separately on port 8712 and calls /api/brain/*.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:8712", "http://localhost:8712"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+    )
+    app.include_router(brain_router)
 
     @app.get("/api/health")
     async def health() -> HealthResponse:
