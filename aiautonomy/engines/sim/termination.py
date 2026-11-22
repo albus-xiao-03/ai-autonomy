@@ -1,4 +1,4 @@
-"""Termination labels (plans/R1.md §4.3).
+"""Termination labels (docs/engine-plan.md §4.3).
 
 Checked after phase 7, or after phase 3 when a removal succeeded there. Removal takes
 precedence over reaching the duration (END-04); nothing else ends a run early (END-02).

@@ -1,5 +1,5 @@
 // Generate aiautonomy/interfaces/net/protocol.gen.ts from the engine's exported JSON Schema
-// (plans/R1.md §4.8). Run from the repository root:
+// (docs/engine-plan.md §4.8). Run from the repository root:
 //
 //   npm run gen:protocol    regenerate the committed file
 //   npm run check:protocol  regenerate into a temp file and exit 1 on drift

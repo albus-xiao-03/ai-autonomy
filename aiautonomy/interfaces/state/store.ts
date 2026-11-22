@@ -1,4 +1,4 @@
-// Client copy of the run state, kept in step with the engine by the rules of plans/R1.md
+// Client copy of the run state, kept in step with the engine by the rules of docs/engine-plan.md
 // §4.8: a snapshot (re)sets the run; other messages for another run are discarded; deltas
 // apply in exact `state_version` order and a gap triggers `sync`.
 // REQ: ARCH-03

@@ -1,4 +1,4 @@
-"""Engine–frontend wire protocol: the single source of truth (plans/R1.md §4.8).
+"""Engine–frontend wire protocol: the single source of truth (docs/engine-plan.md §4.8).
 
 One WebSocket at `/ws` carries JSON text frames, one message per frame, discriminated by
 `type`. The JSON Schema exported from these models

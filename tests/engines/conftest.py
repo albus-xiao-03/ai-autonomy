@@ -1,4 +1,4 @@
-"""Engine test configuration and the paid-API guard (plans/R1.md §8.2, decision D2).
+"""Engine test configuration and the paid-API guard (docs/engine-plan.md §8.2, decision D2).
 
 Every test session:
 

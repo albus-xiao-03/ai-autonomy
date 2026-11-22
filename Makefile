@@ -1,5 +1,5 @@
-# AI Autonomy: top-level tasks (plans/R1.md §6). Run from the repository root.
-# Layout (decision D3, plans/R1.checkpoint.md): engine code in aiautonomy/engines/, interface code in
+# AI Autonomy: top-level tasks (docs/engine-plan.md §6). Run from the repository root.
+# Layout (decision D3, SPEC.md §12b): engine code in aiautonomy/engines/, interface code in
 # aiautonomy/interfaces/; the Python project (pyproject.toml, uv.lock) and the JS project
 # (package.json, package-lock.json) are both rooted here.
 # No target calls a paid API (D2). `test-live` uses the local Ollama model only.
@@ -49,7 +49,7 @@ check-interfaces:
 	$(NPM) run build
 
 # The committed JSON Schema must match the pydantic models, and the committed
-# TypeScript types must match the committed JSON Schema (plans/R1.md §4.8).
+# TypeScript types must match the committed JSON Schema (docs/engine-plan.md §4.8).
 check-schema:
 	$(UV) run python -m aiautonomy.engines.api.export_schema --check
 	$(NPM) run check:protocol

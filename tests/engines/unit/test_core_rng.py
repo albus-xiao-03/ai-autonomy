@@ -41,7 +41,7 @@ def test_u01_is_the_first_8_bytes_of_blake2b_of_seed_and_key() -> None:
 
 def test_draws_are_pinned_across_platforms() -> None:
     # Fixed expected values guard the derivation against accidental change (bit-identical
-    # on macOS and Linux, plans/R1.md §4.2).
+    # on macOS and Linux, docs/engine-plan.md §4.2).
     rng = KeyedRng.from_run_seed(1)
     assert derive_stream_seed(1, "population") == 11330381679698016143
     assert rng.u01("population", "column", "mover-000001") == 0.1570459624389139

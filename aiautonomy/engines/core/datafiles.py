@@ -1,4 +1,4 @@
-"""Versioned data files (plans/R1.md §4.6).
+"""Versioned data files (docs/engine-plan.md §4.6).
 
 Every data file (configuration, scenario, map, catalog, rule set, metric definition, prompt)
 carries `id`, `version` and `schema_version`. Loaders validate it with pydantic and compute

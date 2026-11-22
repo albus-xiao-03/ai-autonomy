@@ -1,4 +1,4 @@
-"""Keyed randomness (plans/R1.md §4.2).
+"""Keyed randomness (docs/engine-plan.md §4.2).
 
 `u01(stream, *key)` takes the first 8 bytes of `blake2b(stream_seed ‖ key)` (default 64-byte
 digest; the seed as 8 big-endian bytes, the key as compact JSON) and maps their top 53 bits

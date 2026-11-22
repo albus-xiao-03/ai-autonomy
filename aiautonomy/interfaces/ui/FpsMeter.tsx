@@ -1,4 +1,4 @@
-// FPS meter with the 95th-percentile frame time (plans/R1.md §7, M0 work item 6).
+// FPS meter with the 95th-percentile frame time (docs/engine-plan.md §7, M0 work item 6).
 // REQ: VIS-01
 import { useEffect, useState } from 'preact/hooks';
 import { ratePerSecond, type FrameStats } from '../render/frameStats';

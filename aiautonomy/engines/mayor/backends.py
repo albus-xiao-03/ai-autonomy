@@ -5,7 +5,7 @@ allowed list the game sent. Any failure falls back to the game's own fallback or
 so the city never waits on a broken model.
 
 The paid API is off unless `AIA_ALLOW_PAID_API=1` and `ANTHROPIC_API_KEY` are set
-in the environment that started the engine (plans/R1.md D2 interlock).
+in the environment that started the engine (docs/engine-plan.md D2 interlock).
 """
 
 import json

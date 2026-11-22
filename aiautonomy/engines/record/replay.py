@@ -1,4 +1,4 @@
-"""Replay a recorded run without inference (plans/R1.md §4.2, §4.7).
+"""Replay a recorded run without inference (docs/engine-plan.md §4.2, §4.7).
 
 Rebuilds the run from its manifest (frozen config, recorded stream seeds, data file
 versions), interventions and decisions, inside `no_inference_clients()`. Compares the tick

@@ -1,4 +1,4 @@
-"""Canonical JSON and blake2b state hashes (plans/R1.md §4.2).
+"""Canonical JSON and blake2b state hashes (docs/engine-plan.md §4.2).
 
 Canonical JSON: sorted keys, no whitespace, floats via `repr` (the json module's float
 encoding), NaN and infinities rejected, non-JSON types rejected. The state hash covers every

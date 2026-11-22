@@ -1,4 +1,4 @@
-"""Layered run configuration (plans/R1.md §4.6).
+"""Layered run configuration (docs/engine-plan.md §4.6).
 
 Engine defaults (`config/engine.yaml`) are overlaid by the scenario file
 (`data/scenarios/<name>.v<N>.yaml`, highest version), then by the run overrides (the run
@@ -103,7 +103,7 @@ class RunConfig(SimSettings):
 
     @property
     def llm_count(self) -> int:
-        """LLM residents: `(population × ratio_bp + 5000) // 10000` (plans/R1.md §4.2)."""
+        """LLM residents: `(population × ratio_bp + 5000) // 10000` (docs/engine-plan.md §4.2)."""
         return apply_bp(self.population, self.llm_ratio_bp)
 
 

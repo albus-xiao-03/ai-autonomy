@@ -1,5 +1,5 @@
 // M0 smoke tests: the browser shows the ticking world, and its controls keep working during
-// an artificial "inference wait" (plans/R1.md §7, M0 exit criteria).
+// an artificial "inference wait" (docs/engine-plan.md §7, M0 exit criteria).
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 import type { AckRecord } from '../../../aiautonomy/interfaces/net/commands';
@@ -7,7 +7,7 @@ import type { CommandType } from '../../../aiautonomy/interfaces/net/protocol';
 import type { ViewState } from '../../../aiautonomy/interfaces/render/view';
 
 const SCREENSHOT = fileURLToPath(new URL('../../../test-results/m0-running.png', import.meta.url));
-/** Ack latency budget for controls (plans/R1.md §7, M0). */
+/** Ack latency budget for controls (docs/engine-plan.md §7, M0). */
 const ACK_BUDGET_MS = 100;
 
 let pageErrors: string[] = [];

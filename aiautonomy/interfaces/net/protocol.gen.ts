@@ -48,7 +48,7 @@ export type ClientMessage =
   | TelemetryCommand;
 
 /**
- * AI Autonomy engine-frontend protocol (plans/R1.md §4.8). One WebSocket at /ws carries JSON text frames discriminated by `type`. Generated from aiautonomy.engines.api.protocol; do not edit.
+ * AI Autonomy engine-frontend protocol (docs/engine-plan.md §4.8). One WebSocket at /ws carries JSON text frames discriminated by `type`. Generated from aiautonomy.engines.api.protocol; do not edit.
  */
 export interface AiaProtocol {
   server_message?: ServerMessage;

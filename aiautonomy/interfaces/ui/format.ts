@@ -1,4 +1,4 @@
-// Text formatting for the panels. Every value ends up in a Preact text node (plans/R1.md
+// Text formatting for the panels. Every value ends up in a Preact text node (docs/engine-plan.md
 // §5.12: model-written text is plain text only).
 import type { HealthResponse, Speed } from '../net/protocol';
 

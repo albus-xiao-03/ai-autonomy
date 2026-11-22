@@ -3,7 +3,7 @@
 Project: **Boston AI Mayor** (three.js browser game). A local LLM mayor (qwen3:8b via Ollama) runs a Cities: Skylines-style Boston while the player builds it and triggers protests and disasters. A satisfaction score shows how well the mayor copes.
 
 ## Always do
-1. Read `SPEC.md` before any work. Section 2 (hard rules) is non-negotiable.
+1. Read `SPEC.md` Part A before any work (Part B only for Python engine work). Section 2 (hard rules) is non-negotiable.
 2. Git: work on branch `utkarsh` only. Never push to `main`. Small commits; message says what changed and how it was verified.
 3. One feature per task. Plan in a few lines, implement, then verify.
 4. Never say "done" unless you ran the game and checked it. Follow `.claude/skills/verify-game/SKILL.md` (tools without skill support: open that file and follow it).
@@ -21,7 +21,7 @@ Project: **Boston AI Mayor** (three.js browser game). A local LLM mayor (qwen3:8
 ## Commands
 - Install: no package installation/build step. Python 3 serves the static `game/` app; Three.js and polygon-clipping are vendored.
 - Run game: `python3 -m http.server 8712 --bind 127.0.0.1 --directory game` from the repository root (serves on http://127.0.0.1:8712). If already running, reuse that server.
-- Tests: `node tests/highway-elevation.cjs` (Node 18+, built-in modules only) verifies the real I-93 corridor, imported heights, all four ramp-to-player-street connections, every level boundary, and player bridge/tunnel profiles. On this machine Node is `/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node`. Syntax check: `for file in dist/*.js; do node --check "$file" || exit; done`. Broader road/incident audit harnesses remain temporary in `/tmp`. Browser checks follow the supplied `/Users/utkarsh/Downloads/repo-kit/.claude/skills/verify-game/SKILL.md`.
+- Tests: `node tests/highway-elevation.cjs` (Node 18+, built-in modules only) verifies the real I-93 corridor, imported heights, all four ramp-to-player-street connections, every level boundary, and player bridge/tunnel profiles. On this machine Node is `/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node`. Syntax check: `for file in game/*.js; do node --check "$file" || exit; done`. Broader road/incident audit harnesses remain temporary in `/tmp`. Browser checks follow `.claude/skills/verify-game/SKILL.md`.
 - Engine (AI brain): `uv run aia serve` (127.0.0.1:8787; `uv sync` once). Engine checks: `uv run pytest -q`, `uv run ruff check aiautonomy tests`, `uv run mypy aiautonomy/engines`, `uv run lint-imports`.
 - Ollama: `ollama serve` (default http://localhost:11434), models `qwen3:8b` (mayor) and `qwen3:1.7b` (residents)
 
@@ -35,7 +35,7 @@ Project: **Boston AI Mayor** (three.js browser game). A local LLM mayor (qwen3:8
 - Satisfaction score + HUD: `game/sim.js` `getState` computes one overall score; `game/app.js` `render` writes `#happy` in `game/index.html`. District scores, score graph, mayor prompt feedback, and before/after action score logs are missing.
 
 - Hybrid brain: `aiautonomy/engines/api/brain.py` routes `/api/brain/status|mayor|mayor/outcome|decisions|residents`; `aiautonomy/engines/mayor/backends.py` (baseline/local/api); `aiautonomy/engines/residents/llm.py` (qwen3:1.7b); `aiautonomy/engines/agents/ollama.py` (loopback client). Game side: `game/sim.js` `decide`, `residentBrain`, `applyResident`, `crime`, `patrol`, `computeScore`; `game/app.js` `pollEngine`, `drawScore`.
-- Teammate R1 engine plan/spec: `plans/R1.md`, `specs/R1.md` (Python engine owns full sim there; here the game keeps physics).
+- Teammate R1 engine plan: `docs/engine-plan.md`; its requirements: `SPEC.md` Part B (Python engine owns full sim there; here the game keeps physics).
 
 ## Style
 - Low-poly diorama look, flat shading, simple low-poly cars.
@@ -46,3 +46,13 @@ Project: **Boston AI Mayor** (three.js browser game). A local LLM mayor (qwen3:8
 - `.claude/skills/verify-game/`: run, screenshot, score, fix loop
 - `.claude/skills/add-event/`: add a protest/disaster/corruption event
 - `.claude/skills/mayor-actions/`: mayor action space, JSON contract, fallback
+
+## Where everything lives (one place each; do not create copies)
+- Requirements, hard rules, decisions, demo script and checklist, status: `SPEC.md` (Part A product, Part B engine requirement IDs). Status table: Section 12 (12b engine milestones).
+- Engine implementation plan and teammate checkpoint log: `docs/engine-plan.md`. Engine design notes: `docs/architecture.md`, `docs/determinism.md`, `docs/tick-order.md`. Generated: `docs/traceability.md` (`uv run aia trace`).
+- Agent rules and commands: this file. Human setup: `README.md`. Playbooks: `.claude/skills/`.
+
+## Claude Code specifics (from repo-kit CLAUDE.md)
+- Use plan mode for audits and anything touching more than 3 files.
+- Use the skills in `.claude/skills/` (`spec-audit`, `verify-game`, `add-event`, `mayor-actions`) when the task matches.
+- Save usage: use the lighter model for routine edits, start a fresh session per feature, and read files with search instead of opening whole files.

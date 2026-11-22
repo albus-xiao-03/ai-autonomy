@@ -18,7 +18,7 @@ node_modules/
 /playwright-report/
 /blob-report/
 
-# Run records and exports (plans/R1.md §4.7). Committed fixtures live under tests/engines/.
+# Run records and exports (docs/engine-plan.md §4.7). Committed fixtures live under tests/engines/.
 /runs/
 *.aia-run.zip
 

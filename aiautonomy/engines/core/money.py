@@ -1,4 +1,4 @@
-"""Integer-cent money and basis-point arithmetic (plans/R1.md §4.2: money is never a float).
+"""Integer-cent money and basis-point arithmetic (docs/engine-plan.md §4.2: money is never a float).
 
 REQ: SIM-04
 """
@@ -34,8 +34,9 @@ def format_cents(amount: Cents) -> str:
 def apply_bp(amount: int, bp: int) -> int:
     """`amount × bp / 10000`, rounded half away from zero, in exact integer arithmetic.
 
-    For non-negative amounts this is `(amount × bp + 5000) // 10000`, the rounding plans/R1.md
-    §4.2 fixes for the LLM population share (halves round up, unlike banker's `round`).
+    For non-negative amounts this is `(amount × bp + 5000) // 10000`, the rounding
+    docs/engine-plan.md §4.2 fixes for the LLM population share (halves round up, unlike
+    banker's `round`).
     """
     if bp < 0:
         raise ValueError("bp must be non-negative")

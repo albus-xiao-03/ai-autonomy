@@ -1,4 +1,4 @@
-# Engine defaults (plans/R1.md §4.3, spec SIM-01). Every value is an initial game
+# Engine defaults (docs/engine-plan.md §4.3, spec SIM-01). Every value is an initial game
 # parameter and can be overridden by the scenario file and then by the run
 # configuration before a run starts; the result is frozen into the run manifest.
 id: engine
@@ -16,7 +16,7 @@ sim:
   duration: 300               # ticks
   mayor_interval: 30          # ticks (doubled while the server room is Degraded, M6)
   population: 100
-  llm_ratio_bp: 5000          # 50 % in basis points (plans/R1.md §4.2)
+  llm_ratio_bp: 5000          # 50 % in basis points (docs/engine-plan.md §4.2)
 
 record:
   snapshot_interval: 30       # full state snapshot every N ticks and at the end

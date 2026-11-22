@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the engine and the Vite dev server together (plans/R1.md §6, `make dev`).
+# Run the engine and the Vite dev server together (docs/engine-plan.md §6, `make dev`).
 # The engine listens on loopback only; Vite proxies /api and /ws to it.
 set -euo pipefail
 

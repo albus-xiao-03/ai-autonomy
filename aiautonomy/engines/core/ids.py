@@ -1,4 +1,4 @@
-"""Deterministic per-type id counters (plans/R1.md §4.2: ids never come from uuid4).
+"""Deterministic per-type id counters (docs/engine-plan.md §4.2: ids never come from uuid4).
 
 Counters live in the World state, so allocated ids are part of the hashed state and replay
 allocates the same ids. Zero-padded numbers make sorted id order equal allocation order.

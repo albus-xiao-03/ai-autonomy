@@ -1,4 +1,4 @@
-"""Wall-clock pacing and playback control on the asyncio loop (plans/R1.md §4.5).
+"""Wall-clock pacing and playback control on the asyncio loop (docs/engine-plan.md §4.5).
 
 Commands are synchronous, so they are handled (and acknowledged) immediately. `pause` and
 `set_speed` take effect at the next tick boundary; `reset` and `cancel` take effect at once:

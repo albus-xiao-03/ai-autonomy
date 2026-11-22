@@ -1,6 +1,6 @@
 # Determinism
 
-Spec SIM-04 and EVAL-04, plans/R1.md §4.2. A run is fully determined by its seeds, its frozen
+Spec SIM-04 and EVAL-04, docs/engine-plan.md §4.2. A run is fully determined by its seeds, its frozen
 configuration and data-file versions, its recorded decisions and its recorded interventions.
 
 ## Keyed randomness

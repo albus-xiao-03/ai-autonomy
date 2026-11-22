@@ -1,4 +1,4 @@
-"""Run recorder (plans/R1.md §4.7).
+"""Run recorder (docs/engine-plan.md §4.7).
 
 Each started run writes `runs/<run_id>/`:
 

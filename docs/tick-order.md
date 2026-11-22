@@ -1,6 +1,6 @@
 # Tick order
 
-Spec SIM-02, plans/R1.md §4.3. The engine advances in fixed ticks of one simulated minute,
+Spec SIM-02, docs/engine-plan.md §4.3. The engine advances in fixed ticks of one simulated minute,
 independent of rendering. Tick `t` runs eight phases in this order. The phase list lives in
 `aiautonomy.engines.sim.phases.PHASES`; each phase is a function of the run (World, keyed RNG
 and frozen configuration) and the tick context.

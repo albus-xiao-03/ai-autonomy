@@ -21,7 +21,7 @@ def write(root: Path, relative: str, text: str) -> None:
 def mini_repo(tmp_path: Path) -> Path:
     write(
         tmp_path,
-        "specs/R1.md",
+        "SPEC.md",
         "# Spec\n\n### AAA-01 — First thing\n\nText.\n\n### BBB-02 — Second | piped\n\n"
         "### CCC-03 — Third\n\n### DDD-04 — Fourth\n\n## Not a requirement\n",
     )
@@ -48,7 +48,7 @@ def mini_repo(tmp_path: Path) -> Path:
 
 
 def test_requirements_come_from_spec_headings(mini_repo: Path) -> None:
-    requirements = trace.parse_requirements((mini_repo / "specs/R1.md").read_text())
+    requirements = trace.parse_requirements((mini_repo / "SPEC.md").read_text())
     assert requirements == {
         "AAA-01": "First thing",
         "BBB-02": "Second | piped",
@@ -83,9 +83,7 @@ def test_markdown_report_and_exit_codes(mini_repo: Path, tmp_path: Path) -> None
     text = output.read_text()
     assert "| AAA-01 | First thing |" in text
     assert "Second \\| piped" in text
-    write(
-        mini_repo, "specs/R1.md", (mini_repo / "specs/R1.md").read_text() + "\n### EEE-05 — Gap\n"
-    )
+    write(mini_repo, "SPEC.md", (mini_repo / "SPEC.md").read_text() + "\n### EEE-05 — Gap\n")
     assert trace.main(["--root", str(mini_repo), "--output", str(output)]) == 0
     assert trace.main(["--root", str(mini_repo), "--output", str(output), "--strict"]) == 1
     assert "| EEE-05 | Gap | — | — | missing |" in output.read_text()

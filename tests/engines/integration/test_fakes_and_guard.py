@@ -1,4 +1,4 @@
-"""Test doubles (plans/R1.md §8.2) and the paid-API guard (D2)."""
+"""Test doubles (docs/engine-plan.md §8.2) and the paid-API guard (D2)."""
 
 import json
 import os

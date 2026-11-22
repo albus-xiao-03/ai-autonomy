@@ -1,4 +1,4 @@
-# M0 toy world: about 40 pedestrians walking a 7 × 7 street grid (plans/R1.md §7 M0).
+# M0 toy world: about 40 pedestrians walking a 7 × 7 street grid (docs/engine-plan.md §7 M0).
 # Meters; x east, y north, origin at the grid center. Values not set under `sim`
 # come from config/engine.yaml.
 id: toy

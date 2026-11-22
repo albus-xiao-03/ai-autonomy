@@ -1,6 +1,6 @@
 """FakeOllama: a loopback HTTP server implementing the subset of `/api/chat` the engine uses.
 
-Scriptable per request (plans/R1.md §8.2): a valid choice, malformed JSON, a wrong schema, a
+Scriptable per request (docs/engine-plan.md §8.2): a valid choice, malformed JSON, a wrong schema, a
 delay, or a hang (released when the server closes). Unscripted requests get a valid choice:
 for every property of the request's `format` schema that has an `enum`, its first value.
 """

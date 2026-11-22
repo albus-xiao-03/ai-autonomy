@@ -6,7 +6,7 @@ import pytest
 from aiautonomy.engines import cli
 from aiautonomy.engines.core.paths import repo_root
 
-# plans/R1.md §3.1: every ARCH-01 component and the package that implements it.
+# docs/engine-plan.md §3.1: every ARCH-01 component and the package that implements it.
 COMPONENT_PACKAGES = {
     "Simulation engine": ["sim", "world", "traffic", "services", "build", "finance", "residents",
                           "politics", "host", "metrics"],

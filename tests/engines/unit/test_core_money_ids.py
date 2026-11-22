@@ -27,7 +27,7 @@ def test_format_cents() -> None:
 
 
 def test_apply_bp_rounds_half_up_like_the_population_rule() -> None:
-    # plans/R1.md §4.2: llm_count = (population × ratio_bp + 5000) // 10000
+    # docs/engine-plan.md §4.2: llm_count = (population × ratio_bp + 5000) // 10000
     assert apply_bp(101, 5000) == 51
     assert apply_bp(100, 5000) == 50
     assert apply_bp(3, 1667) == 1

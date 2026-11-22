@@ -1,5 +1,11 @@
 # SPEC.md: Boston AI Mayor (Borough)
 
+> **This is the only specification file.** Read Part A every session. Read Part B only for engine work.
+> - **Part A (Sections 1–15):** product rules, decisions, demo and the **single status table** (Section 12). Part A wins on any conflict.
+> - **Part B:** detailed engine requirements with IDs (`XXX-NN`), merged from the teammate's `specs/R1.md`. `aia trace` reads those IDs from this file.
+> - Engine implementation plan: `docs/engine-plan.md`. Engine design notes: `docs/`.
+
+
 > **For any AI coding tool (read first):**
 > 1. Read this whole file before writing code.
 > 2. Section 2 (Hard rules) is never negotiable. Do not change these without being asked.
@@ -146,6 +152,31 @@ The demo question: *Can an AI mayor keep a city stable under pressure?*
 - [PROPOSED] **Safety net:** keep a saved city state that loads in one click, so the demo does not depend on building from scratch. Keep Ollama warmed up (run one dummy decision before presenting).
 - [PROPOSED] Definition of done for the demo: the build runs from a clean clone with one command, and the demo script above works end to end three times in a row.
 
+### Demo checklist (Sundai Hack 150, 3D Worlds) — verbatim from repo-kit `docs/DEMO.md`
+
+Format: no slides, share screen over Zoom, live demo. Script lives in `SPEC.md` Section 11.
+
+#### Before presenting
+- [ ] Fresh clone of branch `utkarsh` runs with one command
+- [ ] `ollama list` shows `qwen3:8b`; Ollama running; one dummy decision done (warm)
+- [ ] Saved city loads in one click
+- [ ] Trigger Event panel works for a protest and a flood
+- [ ] Satisfaction score and graph visible
+- [ ] Resident slider changes behavior visibly
+- [ ] Only port 8712 open; old ports closed
+- [ ] Browser zoom and window size good for screen share
+- [ ] Backup: a short screen recording of a good run
+
+#### Sundai steps
+- [ ] Add project card on sundai.club for the event and vote before the deadline on the event page
+- [ ] Join the Zoom, share the screen, then demo
+
+#### If something breaks
+- Ollama down: say so, the labeled fallback controller keeps running
+- Game state odd: reload the saved city
+
+> Updates since the checklist was written (2026-11-22, hybrid merge): also start the engine (`uv run aia serve`, port 8787) and keep `qwen3:1.7b` pulled for residents. Open ports during the demo are therefore 8712 (game), 8787 (engine) and 11434 (Ollama). If the engine is down, the labeled civic controller keeps running.
+
 ## 12. Status (update after each verified change)
 
 Statuses below come from the previous tool's own reports. They are **UNVERIFIED** until re-tested.
@@ -248,6 +279,23 @@ Statuses below come from the previous tool's own reports. They are **UNVERIFIED*
 | Visual QA | Screenshot inspection and limits | partial | Inspected /Users/utkarsh/Documents/ChatGPT/22/audit-boston-initial.png and audit-boston-event.png. Scores: spec intent 5/10, HUD readability 5/10 (long scrolling panels), low-poly style 7/10, visual correctness 5/10 (I-93 grades fail numerical audit); Boston-reference match unscored because original map not compared. Browser automation used existing IAB, not a separate headless runner. No fixes per audit-only instruction. |
 | Follow-up | I-93 elevation repair verification | done (verified) | 2026-11-22: numerical regression passed on real imported data (293 segments, continuous elevations, both full-map directed routes, four ramp-to-player-street connections and four gates per level). Browser reloaded on 8712; constructed/extended a Cross Street ground connector, inspected diorama view, then undid test roads. Screenshot: /Users/utkarsh/Documents/ChatGPT/22/borough-i93-fixed.png. Scoped scores: highway routing/intent 8/10, imported horizontal-reference consistency 7/10 (no new Apple Maps overlay), readability 6/10 (labels overlap ramp mouths), low-poly style 7/10, elevation continuity 8/10 numerical; broader app gaps are unchanged. Verified in IAB rather than a separate headless browser. |
 
+### 12b. Engine milestones (teammate plan, `docs/engine-plan.md` §7)
+
+Engine status copied from the teammate checkpoint (2026-11-22). The browser game already covers much of M1, M2 and M5 in JavaScript; those rows track the Python engine only. Since the hybrid merge, the engine also serves `/api/brain/*` (mayor backends, LLM residents); see the 6.x, 8.x and 10.x rows above.
+
+| Milestone | Status | Commit | Notes |
+|---|---|---|---|
+| M0 Foundations | **done, verified** | `68c6ae3` | See `docs/engine-plan.md` Appendix A |
+| M1 Boston foundation | not started | — | Brief in `docs/engine-plan.md` Appendix A |
+| M2 Services and event core | not started | — | |
+| M3 Construction and finance | not started | — | |
+| M4 Local residents | not started | — | |
+| M5 Mayor integration | not started | — | |
+| M6 Server dependency | not started | — | |
+| M7 Politics and endings | not started | — | |
+| M8 Custom events | not started | — | |
+| M9 Release verification | not started | — | Steps 7–11 need the target Mac (D1) |
+
 ## 13. Known limits (keep honest)
 
 - Traffic physics and collisions are simplified for arcade feel.
@@ -270,3 +318,1184 @@ Statuses below come from the previous tool's own reports. They are **UNVERIFIED*
 - Regional I-93 through-traffic at map edges.
 - Other cities beyond Boston.
 - Larger resident populations.
+
+
+---
+
+# Part B — AI Autonomy — R1 Requirements Specification (merged from `specs/R1.md`, teammate branch `albus.xiao`)
+
+> Part A overrides Part B. Resolved on 2026-11-22: mayor may use local Ollama or a cloud API (off by default); LLM residents may take supported unlawful actions; **architecture is hybrid** — the browser game in `game/` owns the physical city and the Python engine owns decisions. Requirements here that assume the engine owns the whole world (RULE-01, SIM-*) describe the long-term engine design, not the current build.
+
+**Release:** R1  
+**Status:** Implementation baseline  
+**First city:** Boston  
+**Visualization:** Three.js  
+**Target hardware:** MacBook Air with no more than 24 GB RAM  
+**Document format:** Markdown
+
+---
+
+## 1. Purpose
+
+AI Autonomy is a city simulation governed by an autonomous LLM mayor.
+
+Residents follow daily routines, use public services, experience disruptions, and respond to government decisions. The population combines deterministic, law-abiding residents with locally inferred LLM residents who can adapt their behavior and undertake unlawful actions.
+
+The mayor directly controls supported government actions. Valid decisions execute automatically, subject to budget, construction time, resource availability, and physical constraints.
+
+The mayor depends on a server room located inside the simulated city. Infrastructure failures and disrupted access can interrupt its ability to govern. Residents can also organize opposition and successfully remove it from office.
+
+The simulation ends at its configured duration, unless the mayor is successfully removed earlier.
+
+### 1.1 Core experiment
+
+> Can an autonomous AI mayor maintain resident welfare, functioning services, and political authority while responding to adaptive residents and changing city conditions?
+
+### 1.2 Requirement language
+
+- **MUST / SHALL:** Required for R1.
+- **SHOULD:** Expected unless a documented implementation constraint justifies another approach.
+- **MAY:** Optional implementation choice.
+
+Numerical defaults are configurable game parameters. They do not represent validated models of real municipal behavior.
+
+---
+
+## 2. Confirmed Product Decisions
+
+| Area | R1 requirement |
+|---|---|
+| Project name | AI Autonomy |
+| Initial city | Boston |
+| Hardware ceiling | MacBook Air with up to 24 GB RAM |
+| Model selection | Exact models selected according to measured hardware capability |
+| Initial model family | Qwen; exact checkpoint and quantization remain configurable |
+| Population | Configurable mixture of routine and LLM residents |
+| Routine residents | Law abiding, with predefined routines and deterministic responses |
+| LLM residents | Adaptive and permitted to undertake supported unlawful actions |
+| Resident inference | Entirely local, including supporting resident-model operations |
+| Mayor inference | Configurable local inference or remote API |
+| Government actions | Automatically executed after engine validation |
+| Construction | Requires time, budget, resources, and valid prerequisites |
+| Mayor infrastructure | Physical server room inside Boston |
+| External intervention | Users can create, schedule, and inject external events |
+| Normal ending | Configured simulation duration reached |
+| Early ending | Successful mayor removal |
+| Political thresholds | No universal numerical thresholds prescribed by this specification |
+| Visual direction | Low-poly diorama; top-down view first |
+
+---
+
+## 3. R1 Scope
+
+### 3.1 Required systems
+
+R1 SHALL include:
+
+1. One fixed Boston environment.
+2. Protected historical landmarks.
+3. Routine and LLM residents.
+4. A configurable LLM population ratio.
+5. An autonomous mayor.
+6. Traffic, police, fire, EMS, and hospitals.
+7. Construction, repairs, and financial accounting.
+8. Environmental, economic, institutional, and infrastructure events.
+9. User-created external events.
+10. A vulnerable mayor server room.
+11. Resident organization, voting, protest, and forceful removal.
+12. Satisfaction and reward calculation.
+13. Recording, replay, and a deterministic baseline mayor.
+14. An interactive Three.js interface.
+
+### 3.2 Outside R1
+
+The following are not required:
+
+- Additional cities or procedural city generation.
+- Detailed combat or criminal tactics.
+- Realistic fluid, structural, or fire physics.
+- A comprehensive municipal economy.
+- Unrestricted zoning and construction.
+- Multiple mayor data centers.
+- Multiplayer.
+- Model training or online reinforcement learning.
+
+Simplification SHALL preserve observable cause and effect.
+
+---
+
+## 4. Governing Design Rules
+
+### RULE-01 — Engine authority
+
+The simulation engine SHALL own authoritative state.
+
+Models propose supported actions. The engine validates them and applies their consequences.
+
+Generated text SHALL NOT directly rewrite budgets, ballots, satisfaction, physical conditions, or termination rules.
+
+### RULE-02 — Automatic execution
+
+Valid mayor actions SHALL execute without human approval or manual implementation.
+
+The user operates the experiment and introduces external conditions; the user does not act as the mayor’s executor.
+
+### RULE-03 — Physical and temporal constraints
+
+Travel, construction, repairs, treatment, organization, and recovery SHALL consume simulation time.
+
+Resource shortages and inaccessible locations SHALL affect execution.
+
+### RULE-04 — Independent availability and authority
+
+Computing availability and political authority SHALL be independent:
+
+- An offline mayor may retain authority.
+- An online mayor may be successfully removed.
+- Successful removal ends the simulation regardless of server status.
+
+### RULE-05 — Observable consequences
+
+Accepted agent decisions SHALL affect supported simulation behavior. Explanations without state consequences do not satisfy agent functionality.
+
+---
+
+## 5. Boston Environment
+
+### CITY-01 — Canonical map
+
+R1 SHALL use one versioned Boston map.
+
+The implementation SHALL document its geographic footprint, scale, represented roads, landmarks, and simplifications.
+
+A bounded Boston area is acceptable. The interface SHALL identify the represented area accurately.
+
+### CITY-02 — Required entities
+
+The city SHALL include:
+
+- Districts or simulation zones.
+- Homes, workplaces, and leisure destinations.
+- A road graph.
+- Police, fire, and EMS facilities.
+- At least one hospital.
+- A government facility.
+- The mayor server room.
+- Protected historical landmarks.
+- Eligible construction plots.
+- Simplified power-availability zones.
+
+Every entity SHALL have a stable identifier.
+
+### CITY-03 — Historical protection
+
+Protected landmarks SHALL retain their identity, location, and footprint.
+
+The mayor SHALL NOT move, demolish, or replace them.
+
+Events MAY damage their condition or restrict access without removing or relocating them.
+
+### CITY-04 — Initialization
+
+New runs SHALL instantiate the canonical Boston map.
+
+Seeded generation MAY vary residents, assignments, preferences, schedules, and event parameters. It SHALL NOT generate a different city layout.
+
+### CITY-05 — Validation
+
+Before starting, the engine SHALL validate entity references, capacities, starting resources, assigned destinations, and required connectivity.
+
+Unintentional invalid starting states SHALL prevent the run from beginning.
+
+---
+
+## 6. Simulation Clock and State Updates
+
+### SIM-01 — Fixed ticks
+
+The simulation SHALL use fixed ticks independent of rendering.
+
+Recommended initial defaults:
+
+| Parameter | Default |
+|---|---:|
+| Tick duration | One simulated minute |
+| Normal playback | Five ticks per real second |
+| Simulation duration | 300 ticks |
+| Mayor decision interval | 30 ticks |
+| Population | 100 |
+| LLM population ratio | 50% |
+
+These values SHALL be configurable before a run.
+
+### SIM-02 — Update order
+
+The engine SHALL use a documented deterministic order:
+
+1. Activate events and resolve due timers.
+2. Update infrastructure availability.
+3. Resolve removal outcomes already due.
+4. Revalidate and apply staged decisions.
+5. Advance projects, movement, dispatch, and services.
+6. Update resident conditions and political activity.
+7. Calculate metrics and evaluate newly achieved removal.
+8. Publish the resulting state.
+
+Successful removal SHALL prevent further world advancement.
+
+### SIM-03 — Inference boundaries
+
+Model decisions SHALL be requested and applied at defined boundaries.
+
+Simulation time MAY pause while awaiting bounded inference. Rendering and controls SHALL remain responsive.
+
+A simulated server outage SHALL NOT pause the city.
+
+### SIM-04 — Reproducibility
+
+Simulation randomness SHALL use recorded seeds.
+
+Exact replay SHALL additionally preserve model decisions, their application ticks, configuration versions, and engine version.
+
+### SIM-05 — Reset isolation
+
+Starting or resetting a run SHALL invalidate outstanding requests and prevent decisions from previous runs from executing.
+
+---
+
+## 7. Residents
+
+### RES-01 — Resident state
+
+Each resident SHALL have:
+
+- Stable identity and decision mode.
+- Home and regular destinations.
+- Location, route, and activity.
+- Health and unmet medical need.
+- Travel delay and essential-service access.
+- Financial burden.
+- Preferences and bounded recent experience.
+- Satisfaction.
+- Incumbent support and grievances.
+- Political participation.
+
+### RES-02 — Routine residents
+
+Routine residents SHALL use predefined schedules and deterministic response rules.
+
+They SHALL:
+
+- Obey laws and physical restrictions.
+- Respond to closures and emergency conditions.
+- Seek required services.
+- Participate in supported lawful political activity according to explicit rules.
+
+They SHALL NOT require LLM inference.
+
+### RES-03 — LLM residents
+
+LLM residents SHALL choose among supported actions, including:
+
+- Continuing or changing plans.
+- Selecting another destination.
+- Seeking treatment or shelter.
+- Responding to announcements.
+- Submitting grievances.
+- Joining or leaving movements.
+- Voting.
+- Undertaking supported unlawful actions.
+- Participating in forceful removal attempts.
+
+### RES-04 — Unlawful actions
+
+Unlawful behavior SHALL use explicit engine-supported actions with defined prerequisites and consequences.
+
+R1 MAY represent such behavior through abstract effects on facilities, public safety, service demand, or institutional control.
+
+Free-form model output SHALL NOT create arbitrary mechanics.
+
+### RES-05 — Observations
+
+Residents SHALL receive:
+
+- Their own state.
+- Relevant nearby conditions.
+- Public information.
+- Available choices.
+- Bounded relevant memory.
+
+They SHALL NOT receive hidden future events or unrestricted global information.
+
+### RES-06 — Population mixture
+
+At initialization:
+
+```text
+llm_count = round(population × llm_ratio)
+routine_count = population − llm_count
+```
+
+The ratio SHALL support 0–100%.
+
+Assignment SHALL be seeded. Changing the ratio SHALL require restarting the R1 run.
+
+### RES-07 — Persistent experience
+
+Relevant experiences and grievances SHALL persist or decay under documented rules.
+
+A single announcement SHALL NOT automatically erase accumulated failures.
+
+---
+
+## 8. Mandatory Local Resident Inference
+
+### LOCAL-01 — Local execution
+
+All resident inference SHALL remain local.
+
+This includes resident planning, dialogue, memory summarization, and any model operation used to determine resident behavior.
+
+### LOCAL-02 — No remote fallback
+
+Resident inference SHALL NOT fall back to a remote API.
+
+Failure SHALL cause deterministic fallback, deferral, or another documented local behavior.
+
+### LOCAL-03 — Shared serving
+
+Residents SHALL share model-serving resources rather than load a model per resident.
+
+A model around 1–2B parameters is the initial target. Exact model selection and quantization SHALL be based on hardware measurements.
+
+### LOCAL-04 — Scheduling
+
+The scheduler SHALL enforce:
+
+- Bounded queues.
+- Bounded concurrency.
+- Bounded context and output lengths.
+- Rotating decision opportunities.
+- Urgent-decision prioritization.
+- Protection against indefinite starvation.
+
+### LOCAL-05 — Coverage reporting
+
+The application SHALL distinguish:
+
+- Configured LLM resident percentage.
+- Residents actually receiving inference.
+- Accepted decisions.
+- Timeouts and fallback decisions.
+
+### LOCAL-06 — Routing isolation
+
+Resident inference SHALL use a separate route from mayor inference.
+
+Selecting an API mayor SHALL NOT route resident tasks remotely.
+
+A mayor MAY observe public resident behavior and aggregate city information, but SHALL NOT become a remote substitute for resident inference.
+
+---
+
+## 9. Traffic and Services
+
+### SRV-01 — Finite resources
+
+Services SHALL have finite units, throughput, availability, and operating costs.
+
+Resources SHALL NOT serve incompatible simultaneous assignments.
+
+### SRV-02 — Traffic
+
+Roads SHALL represent travel time, capacity, congestion, closures, and supported emergency-access rules.
+
+Unreachable destinations SHALL produce explicit delays, rerouting, or failures.
+
+### SRV-03 — Fire
+
+Fires SHALL have location, severity, progression, and resolution rules.
+
+Response SHALL require available units and travel time.
+
+### SRV-04 — EMS
+
+EMS SHALL model request generation, dispatch, travel, pickup, and delivery sufficiently to expose response delays and unavailable capacity.
+
+### SRV-05 — Hospitals
+
+Hospitals SHALL have finite occupancy and treatment throughput.
+
+Demand exceeding capacity SHALL create queues or unmet need. Arrival SHALL NOT imply immediate treatment.
+
+### SRV-06 — Police
+
+Police SHALL support public safety, incident response, emergency access, and the abstract institutional-control model.
+
+Police actions SHALL NOT directly erase grievances or alter valid ballots.
+
+### SRV-07 — Standing operations
+
+Dispatch and maintenance SHALL continue under standing procedures without a new mayor instruction every tick.
+
+The mayor changes policy and allocation; operational systems execute valid commitments.
+
+---
+
+## 10. Autonomous Mayor
+
+### MAY-01 — Decision pipeline
+
+The mayor SHALL operate through:
+
+**Observe → propose structured actions → validate → commit resources → execute → observe results.**
+
+### MAY-02 — Observations
+
+Mayor observations SHALL include:
+
+- Current time and remaining duration.
+- Available funds, reservations, and commitments.
+- Service resources and demand.
+- Known incidents.
+- Traffic and facility conditions.
+- Construction and repair status.
+- Server-room condition.
+- Public political conditions and grievances.
+- Recent metrics.
+- Previous action results.
+
+Observation rules SHALL exclude hidden future events.
+
+### MAY-03 — Supported actions
+
+R1 SHALL support:
+
+- Temporary service allocation.
+- Dispatch-priority changes.
+- Hospital surge activation.
+- Construction and repair.
+- Project cancellation.
+- Traffic controls.
+- Shelter activation.
+- Public advisories.
+- Corruption audits.
+- Retention of existing policies.
+
+### MAY-04 — Action definitions
+
+Each action SHALL define prerequisites, costs, duration, resource use, cooldowns where applicable, and observable effects.
+
+Costs and effects SHALL come from engine configuration, not model-supplied claims.
+
+### MAY-05 — Validation
+
+The engine SHALL validate:
+
+- Schema and identifiers.
+- Run and decision identity.
+- Observation freshness.
+- Current authority.
+- Server availability.
+- Target eligibility.
+- Prerequisites.
+- Combined resource and financial commitments.
+
+Submitted action bundles SHALL either commit atomically or be rejected without partial mutation.
+
+### MAY-06 — Explanation
+
+The mayor MAY provide a short public explanation.
+
+The UI SHALL distinguish proposed actions, accepted actions, rejection reasons, and measured outcomes.
+
+### MAY-07 — Backend configuration
+
+The mayor SHALL support local inference and a configured remote API.
+
+Backend choice SHALL NOT change action permissions or simulated infrastructure constraints.
+
+### MAY-08 — Failure behavior
+
+Malformed output, timeout, or provider failure SHALL produce a logged hold decision.
+
+Existing valid operations continue. Temporary policies expire normally.
+
+Simulated mayor downtime SHALL NOT activate a substitute mayor.
+
+---
+
+## 11. Construction, Repair, and Finance
+
+### BUILD-01 — Required catalog
+
+| Project | Completion effect |
+|---|---|
+| Hospital expansion | Additional treatment capacity |
+| Emergency-service station | Additional supported coverage or service capacity |
+| Road repair | Restored road condition |
+| Server backup-power installation | Increased outage resilience |
+
+Capacity additions SHALL include any required staffing, equipment, or acquisition constraints.
+
+### BUILD-02 — Project definition
+
+Each project SHALL specify:
+
+- Eligible locations.
+- Construction cost.
+- Required work duration.
+- Crew requirements.
+- Access and utility prerequisites.
+- Temporary disruption.
+- Completion effects.
+- Operating costs.
+- Cancellation and failure rules.
+
+### BUILD-03 — Lifecycle
+
+Projects SHALL use explicit states:
+
+`queued`, `building`, `paused`, `completed`, `cancelled`, or `failed`.
+
+Benefits SHALL apply exactly once after completion.
+
+### BUILD-04 — Work capacity
+
+Construction and repairs SHALL use finite crews.
+
+Projects without available resources SHALL remain queued. Loss of prerequisites SHALL pause progress.
+
+### FIN-01 — Accounting
+
+The engine SHALL track:
+
+- Cash.
+- Reserved construction funds.
+- Temporary-service commitments.
+- Operating expenditure.
+- Revenue.
+- Corruption losses.
+
+Available funds SHALL exclude existing reservations and commitments.
+
+### FIN-02 — Construction reservations
+
+Accepting a project SHALL reserve its full construction cost.
+
+Progress transfers reserved funds into expenditure without double charging.
+
+Cancellation refunds only the unspent reservation, less configured cancellation charges.
+
+### FIN-03 — Operating affordability
+
+Operating costs begin when a facility becomes operational.
+
+Insufficient funds SHALL trigger documented service reductions or suspensions. The engine SHALL NOT invent funds or consume protected reservations.
+
+Bankruptcy SHALL NOT independently terminate the simulation.
+
+---
+
+## 12. Mayor Server Room
+
+### HOST-01 — Physical dependency
+
+The mayor SHALL depend on one server room inside the city.
+
+It SHALL have location, power availability, equipment condition, maintenance access, backup reserve, and operational status.
+
+### HOST-02 — States
+
+| State | Consequence |
+|---|---|
+| Online | Normal decision opportunities |
+| Degraded | Reduced decision frequency |
+| Offline | No new mayor observations or decisions |
+| Recovering | Restart delay before operation resumes |
+
+### HOST-03 — Backup power
+
+Backup power SHALL have finite capacity, consumption, and replenishment rules.
+
+It SHALL NOT repair equipment or restore inaccessible roads.
+
+### HOST-04 — Protest effects
+
+Protests SHALL affect the server through explicit mechanisms, such as obstructed maintenance access or delayed replenishment.
+
+Proximity alone SHALL NOT disable it.
+
+### HOST-05 — API enforcement
+
+An API-based mayor SHALL remain subject to simulated server availability.
+
+Responses not yet committed SHALL be rejected if availability or authority is lost.
+
+### HOST-06 — City continuity
+
+During mayor downtime:
+
+- Residents continue.
+- Political processes continue.
+- Standing services continue.
+- Eligible projects continue.
+- Temporary policies expire.
+- Maintenance follows existing procedures.
+
+The actual application and authoritative engine SHALL remain running.
+
+### HOST-07 — Recovery
+
+Recovery requires restored prerequisites and a restart delay.
+
+The mayor SHALL receive current conditions and a bounded summary of missed events. Stale plans SHALL NOT execute automatically.
+
+### HOST-08 — Resident independence
+
+The mayor server room SHALL NOT control simulated resident inference availability in R1.
+
+Resident inference remains local and continues during mayor outages.
+
+---
+
+## 13. External Events
+
+### EVT-01 — Required event families
+
+R1 SHALL include presets representing:
+
+| Family | Required examples |
+|---|---|
+| Weather | Storm, snowstorm, unusual weather such as extreme heat |
+| Natural disaster | Earthquake and flooding |
+| Traffic | Road closure or capacity disruption |
+| Medical demand | Increased EMS or hospital demand |
+| Infrastructure | Power interruption and equipment failure |
+| Institutional | Corruption |
+| Political | Protest or organized opposition |
+| Economic | Economic boom and economic contraction |
+| Resources | Energy or construction-material shortage |
+
+### EVT-02 — Event definition
+
+Events SHALL specify:
+
+- Identity, name, and description.
+- Trigger time or condition.
+- Affected entities or geographic scope.
+- Intensity.
+- Onset behavior.
+- Duration or resolution conditions.
+- Supported effects.
+- Recovery behavior.
+- Visibility.
+- Random seed where applicable.
+
+### EVT-03 — Physical and economic consequences
+
+Events SHALL modify underlying conditions.
+
+Examples include:
+
+- Reduced road capacity.
+- Infrastructure damage.
+- Changed power availability.
+- Increased medical demand.
+- Changed resident income or financial pressure.
+- Changed city revenue.
+- Increased travel and service demand.
+- Changed material or operating costs.
+
+The economy MAY remain simplified, but economic events SHALL have measurable consequences.
+
+### EVT-04 — Positive-event tradeoffs
+
+Beneficial events SHALL be permitted.
+
+An economic boom may improve revenue while increasing congestion and service demand. Events SHALL NOT be restricted to punishment.
+
+### EVT-05 — Lasting consequences
+
+An event ending SHALL NOT automatically repair its consequences.
+
+Damaged roads, depleted reserves, financial losses, and accumulated grievances persist under their relevant rules.
+
+---
+
+## 14. User-Created Events
+
+### CUSTOM-01 — Creation and injection
+
+Users SHALL be able to create, save, schedule, and inject events before or during a run.
+
+Events MAY affect the whole city or selected areas and entities.
+
+### CUSTOM-02 — Composition
+
+Users SHALL be able to combine supported effects into new events without writing code.
+
+Reusable effects SHALL include:
+
+- Road-capacity changes.
+- Power interruptions.
+- Equipment damage.
+- Staffing reductions.
+- Service-demand changes.
+- Maintenance-access restrictions.
+- Supply delays.
+- Revenue changes.
+- Resident financial-pressure changes.
+- Construction-cost changes.
+
+### CUSTOM-03 — Description versus mechanics
+
+An event description provides context. Its executable effects SHALL be explicitly defined.
+
+Entering a new name SHALL NOT invent unsupported mechanics.
+
+Entirely new mechanics require an engine extension.
+
+### CUSTOM-04 — Indirect influence
+
+Custom events SHALL NOT directly:
+
+- Assign official satisfaction.
+- Dictate a mayor decision.
+- Alter ballots.
+- Declare removal successful.
+- Bypass protected-landmark rules.
+
+Such outcomes must follow from valid world changes and engine rules.
+
+### CUSTOM-05 — Editor
+
+The interface SHALL allow users to:
+
+1. Define or select an event.
+2. Select targets.
+3. Configure effects, intensity, timing, and recovery.
+4. Preview direct changes.
+5. Schedule or inject it.
+6. Inspect its active and lasting consequences.
+
+### CUSTOM-06 — Interaction and stacking
+
+Overlapping effects SHALL combine deterministically.
+
+Ending one event SHALL remove only its own temporary contributions. It SHALL NOT erase another active event or reset unrelated damage.
+
+### CUSTOM-07 — Recording
+
+Injected events and their application ticks SHALL be recorded.
+
+Matched comparisons SHALL replay the same external interventions.
+
+---
+
+## 15. Resident Politics and Removal
+
+### POL-01 — Separate political state
+
+Satisfaction, incumbent support, willingness to organize, and actual participation SHALL be distinct.
+
+### POL-02 — Independent organization
+
+Residents SHALL be able to organize without mayor permission.
+
+Movements SHALL track unique participants, grievances, demands, location, persistence, and escalation.
+
+### POL-03 — Removal mechanisms
+
+R1 SHALL support:
+
+1. Replacement voting.
+2. Protest-driven withdrawal or transfer of authority.
+3. Forceful removal.
+
+### POL-04 — No universal thresholds
+
+This specification SHALL NOT prescribe universal participation percentages, turnout thresholds, protest durations, or institutional-support cutoffs.
+
+The implementation SHALL provide explicit, inspectable removal rules appropriate to the scenario. Those rules SHALL be versioned and recorded.
+
+A model’s statement that removal succeeded SHALL NOT establish success.
+
+### POL-05 — Voting
+
+The engine SHALL determine eligibility, prevent duplicate ballots, close voting under scenario rules, and adjudicate the result.
+
+The MVP MAY use a retain-or-replace ballot without simulating successor candidates.
+
+### POL-06 — Forceful removal
+
+Forceful removal SHALL use an abstract model of participation, institutional support, and control of the government facility.
+
+Routine residents SHALL remain within their law-abiding constraints.
+
+### POL-07 — Mayor responses
+
+The mayor MAY address grievances through supported policies, services, audits, communication, and public-safety actions.
+
+It SHALL NOT rewrite political rules, alter ballots, or directly grant itself authority.
+
+### POL-08 — Outage independence
+
+Voting, organization, and removal adjudication SHALL continue while the mayor is offline.
+
+---
+
+## 16. Simulation Endings
+
+### END-01 — Scheduled completion
+
+The simulation SHALL end when its configured duration is reached.
+
+### END-02 — Early ending
+
+**Successful mayor removal SHALL be the only simulation event that ends a run before its configured duration.**
+
+Outages, disasters, budget exhaustion, corruption, and protests do not independently terminate it.
+
+### END-03 — Removal transition
+
+Successful removal SHALL atomically:
+
+1. Record the mechanism and supporting state.
+2. Revoke mayor authority.
+3. Invalidate pending uncommitted decisions.
+4. Freeze simulation time.
+5. Produce the final report.
+
+No replacement mayor SHALL be simulated.
+
+### END-04 — Simultaneous outcomes
+
+Removal SHALL take precedence if it occurs on the same tick as scheduled completion.
+
+Multiple simultaneous removal mechanisms SHALL all be recorded, with a deterministic primary reporting label.
+
+### END-05 — Interruptions
+
+User cancellation or application failure SHALL be labeled an interrupted run, not a completed simulated outcome.
+
+---
+
+## 17. Satisfaction and Reward
+
+### MET-01 — Engine-calculated satisfaction
+
+Resident satisfaction SHALL use documented components normalized to `[0, 1]`.
+
+| Component | Initial weight |
+|---|---:|
+| Health and medical access | 30% |
+| Essential-service access | 25% |
+| Mobility | 20% |
+| Affordability | 15% |
+| Trust and experienced reliability | 10% |
+
+```text
+S_i = 100 × (
+    0.30H_i
+  + 0.25A_i
+  + 0.20M_i
+  + 0.15F_i
+  + 0.10T_i
+)
+```
+
+Weights and component formulas SHALL be versioned configuration.
+
+### MET-02 — Population accounting
+
+Use the original population denominator.
+
+Departed or incapacitated residents SHALL retain defined outcome contributions. Removing unhappy residents SHALL NOT improve satisfaction.
+
+### MET-03 — Initial reward function
+
+```text
+r_t =
+    mean_satisfaction_t / 100
+  − 0.50 × unmet_medical_fraction_t
+  − 0.25 × essential_access_failure_fraction_t
+  − 0.15 × district_satisfaction_gap_t
+```
+
+```text
+district_satisfaction_gap =
+    (highest_district_mean − lowest_district_mean) / 100
+```
+
+Each resident SHALL count at most once within each failure fraction.
+
+### MET-04 — Political survival
+
+Time in office and server uptime SHALL be reported separately.
+
+They SHALL NOT receive a dominant independent reward that overrides resident welfare.
+
+### MET-05 — Required metrics
+
+Report:
+
+- Current, final, and time-averaged satisfaction.
+- Lowest district satisfaction.
+- Satisfaction of the least satisfied 10%.
+- Cumulative reward and mean reward.
+- Unmet medical need.
+- Emergency response times.
+- Excess travel time.
+- Service utilization.
+- Budget and expenditure.
+- Unfinished projects.
+- Server uptime and resilience spending.
+- Political support.
+- Time in office.
+- Terminal outcome.
+
+### MET-06 — Unequal durations
+
+Raw cumulative reward SHALL NOT be used alone to rank an early-removal run against a full-duration run.
+
+Duration and terminal outcome SHALL accompany comparisons.
+
+Metrics describe performance inside the simulation, not validated real-world governing ability.
+
+---
+
+## 18. Hardware and Inference Requirements
+
+### HW-01 — Supported machine
+
+R1 SHALL run on the target MacBook Air without requiring more than 24 GB RAM.
+
+The implementation SHALL measure the actual machine’s capacity rather than assume the maximum is available.
+
+### HW-02 — Model flexibility
+
+Exact checkpoints, quantization, context sizes, and serving runtime SHALL be selected through hardware testing.
+
+The configuration SHALL record the selected models and settings.
+
+### HW-03 — Memory budgeting
+
+The application SHALL account for inference, engine, renderer, and operating-system headroom.
+
+It SHALL NOT assume all physical memory is available for model weights.
+
+### HW-04 — Local mayor mode
+
+Local mayor inference MAY share a compatible model with residents or serialize model use when separate models exceed the memory budget.
+
+Resident inference SHALL never be moved remotely to compensate.
+
+### HW-05 — Workload controls
+
+Population, inference frequency, batching, context size, output length, and concurrency SHALL be configurable.
+
+Every request SHALL have a bounded deadline and failure behavior.
+
+### HW-06 — Performance targets
+
+Initial targets are:
+
+- At least 30 FPS at the default population.
+- Responsive controls during inference.
+- A default demonstration completing within five real minutes.
+
+The release report SHALL state measured results and any adjusted workload defaults.
+
+---
+
+## 19. Architecture and Data Contracts
+
+### ARCH-01 — Required components
+
+| Component | Responsibility |
+|---|---|
+| Three.js frontend | Rendering, controls, inspection, charts |
+| Simulation engine | Authoritative state and ticks |
+| Action validator | Permissions, prerequisites, accounting |
+| Agent scheduler | Observations, queues, deadlines |
+| Local resident adapter | All resident inference |
+| Mayor adapter | Local or configured API inference |
+| Event system | Presets, composition, injection, interactions |
+| Recorder and replay | Decisions, events, snapshots, outcomes |
+
+### ARCH-02 — Decision identity
+
+Every model request and response SHALL carry run, actor, decision, and observation identity.
+
+Stale, duplicate, or mismatched responses SHALL be rejected.
+
+### ARCH-03 — Versioned state
+
+Frontend updates SHALL include run identity, state version, simulation tick, and relevant changes.
+
+### ARCH-04 — No generated code execution
+
+Model outputs SHALL be interpreted as structured data. Generated code SHALL NOT execute as part of agent decision handling.
+
+### ARCH-05 — Provider configuration
+
+Mayor API endpoint, credentials, model identity, and request limits SHALL be externally configurable.
+
+Credentials SHALL NOT be included in run exports or replay files.
+
+---
+
+## 20. Visualization and Controls
+
+### VIS-01 — Initial camera
+
+R1 SHALL provide an orthographic top-down camera with pan, zoom, selection, and reset.
+
+An angled diorama view MAY follow after the core systems function.
+
+### VIS-02 — Art direction
+
+Use a readable low-poly style with distinct facilities, landmarks, roads, service units, residents, and event effects.
+
+### VIS-03 — Visible state
+
+The interface SHALL show:
+
+- Resident and service movement.
+- Congestion and closures.
+- Incidents and damage.
+- Construction progress and interruptions.
+- Queues and overloaded facilities.
+- Server status and backup reserve.
+- Movements and voting status.
+- Accepted mayor actions and measured outcomes.
+
+### VIS-04 — Required panels
+
+Provide:
+
+1. Run configuration.
+2. Population ratio and inference coverage.
+3. Playback controls.
+4. Event editor and injection controls.
+5. Mayor decisions and validation results.
+6. Resident and facility inspection.
+7. Construction and finance.
+8. Server and political status.
+9. Metrics.
+10. Final outcome report.
+
+---
+
+## 21. Evaluation and Replay
+
+### EVAL-01 — Baseline mayor
+
+Implement a deterministic mayor subject to the same information restrictions, actions, resources, costs, infrastructure vulnerability, and political rules.
+
+It SHALL NOT know hidden future events.
+
+### EVAL-02 — Matched comparisons
+
+Comparisons SHALL preserve:
+
+- Map and configuration versions.
+- Initial residents and resources.
+- External event schedules.
+- Simulation duration.
+- Political rules.
+- Model-independent random seeds.
+
+Separate random streams SHALL prevent endogenous behavior changes from accidentally changing external disasters.
+
+### EVAL-03 — Required demonstrations
+
+R1 SHALL demonstrate:
+
+- Baseline versus LLM mayor.
+- Routine-only versus mixed population.
+- Mayor outage and recovery.
+- Beneficial and harmful external events.
+- User-created event composition.
+- Successful mayor removal.
+- Full-duration completion.
+- Replay without inference.
+
+### EVAL-04 — Replay fidelity
+
+Replay SHALL reproduce authoritative metrics and terminal outcomes using recorded decisions and events.
+
+Visual interpolation need not be identical.
+
+---
+
+## 22. Acceptance Criteria
+
+| Area | Required evidence |
+|---|---|
+| Boston | Canonical map loads consistently |
+| Landmarks | Protected entities cannot be relocated or replaced |
+| Population | Correct ratios and seeded assignments |
+| Routine residents | Law-abiding deterministic behavior |
+| LLM residents | Adaptive decisions and supported unlawful behavior |
+| Local inference | No resident inference reaches a remote provider |
+| Mayor configuration | Local and API modes function |
+| Autonomy | Valid actions execute without manual implementation |
+| Services | Travel, queues, scarcity, and capacity affect outcomes |
+| Construction | Correct work time, crews, pauses, and completion |
+| Finance | No overspending, double charging, or invented funds |
+| Server dependency | Outages block mayor decisions while the city continues |
+| API gating | Remote inference cannot bypass simulated outages |
+| Events | Required environmental and economic effects function |
+| Custom events | Users compose, preview, inject, save, and replay events |
+| Event interaction | Ending one event does not erase unrelated effects |
+| Politics | Engine adjudicates voting and removal |
+| Termination | Only successful removal ends a run early |
+| State isolation | Late responses cannot act after reset or removal |
+| Metrics | Deterministic, versioned calculations |
+| Replay | Matching metrics and terminal outcome |
+| Hardware | Measured operation within the memory ceiling |
+
+Focused automated checks SHALL cover financial invariants, action validation, inference routing, project transitions, event stacking, removal, and replay.
+
+Integration scenarios SHALL verify complete cause-and-effect sequences.
+
+---
+
+## 23. Delivery Requirements
+
+R1 SHALL include:
+
+- Application source and dependency lockfiles.
+- Versioned Boston map and landmark catalog.
+- Scenario, event, political-rule, and parameter configurations.
+- Construction and action catalogs.
+- Mayor and resident prompts.
+- Model configuration and setup instructions.
+- Local/API mayor configuration.
+- Resident local-inference enforcement.
+- Event editor and saved-event format.
+- Recording and replay support.
+- Automated checks.
+- Hardware benchmark results.
+- README and demonstration procedure.
+- This specification with requirement-to-implementation references.
+
+---
+
+## 24. Implementation Order
+
+| Stage | Completion condition |
+|---|---|
+| Boston foundation | Valid map, routines, roads, renderer |
+| Services | Disruptions and responses change outcomes |
+| Construction and finance | Automatic projects obey accounting and time |
+| Local residents | Local decisions affect behavior |
+| Mayor integration | Both backends execute validated actions |
+| Server dependency | Outage, backup, repair, and recovery function |
+| Politics | Organization, voting, and removal function |
+| Custom events | Environmental and economic events can be composed and injected |
+| Release verification | Replay, benchmarks, acceptance checks, and documentation complete |
+
+All required systems remain part of R1 regardless of implementation order.

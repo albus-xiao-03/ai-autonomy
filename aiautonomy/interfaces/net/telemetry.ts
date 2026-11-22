@@ -1,5 +1,5 @@
 // FPS and command-latency telemetry, sent to the engine every 5 s for benchmark reports
-// (plans/R1.md §5.12 "Performance").
+// (docs/engine-plan.md §5.12 "Performance").
 // REQ: ARCH-03
 import type { SampleWindow } from '../state/samples';
 import type { TelemetryCommand } from './protocol';

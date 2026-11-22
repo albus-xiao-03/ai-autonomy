@@ -1,5 +1,5 @@
 // Command sender: attaches a client-generated `cmd_id`, matches the engine's single ack
-// and measures ack latency for the telemetry report (plans/R1.md §4.8, §5.12).
+// and measures ack latency for the telemetry report (docs/engine-plan.md §4.8, §5.12).
 // REQ: VIS-04, ARCH-03
 import { SampleWindow } from '../state/samples';
 import type { AckMessage, ClientMessage, CommandBody, CommandType } from './protocol';

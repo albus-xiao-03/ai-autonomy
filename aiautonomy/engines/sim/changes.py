@@ -1,4 +1,4 @@
-"""World-view diffs published as protocol changes (plans/R1.md §4.8).
+"""World-view diffs published as protocol changes (docs/engine-plan.md §4.8).
 
 A change is `{"op": "upsert", "collection", "id", "value"}`, `{"op": "remove",
 "collection", "id"}` or `{"op": "set", "field", "value"}`. Each replaces whole values, so

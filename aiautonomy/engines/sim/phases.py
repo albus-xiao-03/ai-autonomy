@@ -1,4 +1,4 @@
-"""The eight tick phases, in their fixed order (plans/R1.md §4.3, docs/tick-order.md).
+"""The eight tick phases, in their fixed order (docs/engine-plan.md §4.3, docs/tick-order.md).
 
 Each phase is a function of the run (World, keyed RNG, frozen configuration) and the tick
 context. M0 implements the clock (phase 1), toy movement (phase 5), toy metrics and the

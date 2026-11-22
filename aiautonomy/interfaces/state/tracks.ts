@@ -1,5 +1,5 @@
 // Positions of moving entities at the previous and current tick, interpolated every frame
-// (plans/R1.md §5.12: "Deltas are applied at the tick rate and interpolated each frame").
+// (docs/engine-plan.md §5.12: "Deltas are applied at the tick rate and interpolated each frame").
 // REQ: VIS-01
 
 /** Shortest interpolation segment (one frame at 60 Hz). */

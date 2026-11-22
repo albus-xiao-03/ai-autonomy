@@ -1,4 +1,4 @@
-// App-facing view of the generated protocol types (plans/R1.md §4.8). Only this module
+// App-facing view of the generated protocol types (docs/engine-plan.md §4.8). Only this module
 // imports `protocol.gen.ts`, so a schema rename is fixed here, not across the app.
 // REQ: ARCH-03
 import type { AckMessage, ClientMessage, ServerMessage } from './protocol.gen';

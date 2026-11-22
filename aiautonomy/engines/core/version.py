@@ -1,4 +1,4 @@
-"""Engine version stamp: package version, git SHA and dirty flag (plans/R1.md §4.6).
+"""Engine version stamp: package version, git SHA and dirty flag (docs/engine-plan.md §4.6).
 
 Git is optional: without git or outside a checkout, the SHA and dirty flag are None.
 

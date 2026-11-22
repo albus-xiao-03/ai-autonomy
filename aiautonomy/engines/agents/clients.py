@@ -2,7 +2,7 @@
 
 Every inference client (resident adapter, mayor backends) registers itself when created.
 Replay runs inside `no_inference_clients()`, which makes any creation fail and asserts that
-none happened (plans/R1.md §5: replay creates no inference client).
+none happened (docs/engine-plan.md §5: replay creates no inference client).
 
 REQ: EVAL-04
 """

@@ -1,6 +1,6 @@
 name: ci
 
-# plans/R1.md §6: CI runs `make check` with fake inference only.
+# docs/engine-plan.md §6: CI runs `make check` with fake inference only.
 # No job has API credentials and none calls a paid API (D2).
 
 on:

@@ -18,7 +18,7 @@ Open http://127.0.0.1:8712. The browser game owns the city (map, roads, traffic,
 
 If the engine is down, the game keeps running and labels the "Civic controller · engine offline" fallback.
 
-The teammate R1 engine plan and spec are in `plans/R1.md` and `specs/R1.md`; its Vite frontend (`npm run dev`) is a separate skeleton.
+All requirements and status are in `SPEC.md` (Part B holds the teammate's R1 engine requirements). The engine plan is `docs/engine-plan.md`. The teammate's Vite frontend (`npm run dev`) is a separate skeleton.
 
 ## Play
 

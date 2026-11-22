@@ -1,4 +1,4 @@
-"""Command-line entry point `aia` (plans/R1.md §6).
+"""Command-line entry point `aia` (docs/engine-plan.md §6).
 
 `serve`, `run --headless`, `replay`, `trace`; `compare`, `bench` and `map build` arrive in
 later milestones.

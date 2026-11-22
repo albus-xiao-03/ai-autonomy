@@ -1,6 +1,6 @@
 """FastAPI application: WebSocket `/ws`, REST under `/api`, the built frontend at `/`.
 
-One asyncio loop serves HTTP, WebSockets and the sim driver (plans/R1.md §3.2, §4.5).
+One asyncio loop serves HTTP, WebSockets and the sim driver (docs/engine-plan.md §3.2, §4.5).
 
 REQ: ARCH-01, ARCH-03
 """

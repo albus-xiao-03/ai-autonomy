@@ -1,6 +1,6 @@
 """FakeAnthropic: a loopback contract fake of the Messages endpoint (skeleton).
 
-Reached through the real SDK's `base_url` (plans/R1.md §8.2). M0 checks the credential and
+Reached through the real SDK's `base_url` (docs/engine-plan.md §8.2). M0 checks the credential and
 version headers and returns one minimal valid Message; M5 adds structured output, refusals,
 `max_tokens`, 429 with `retry-after`, 5xx errors and timeouts.
 """

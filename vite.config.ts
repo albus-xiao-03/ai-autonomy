@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, type ProxyOptions } from 'vite';
 
 // The browser only talks to the engine through /api (REST) and /ws (WebSocket); the dev
-// and preview servers proxy both to the engine on loopback (plans/R1.md §6).
+// and preview servers proxy both to the engine on loopback (docs/engine-plan.md §6).
 // REQ: ARCH-01
 const engineTarget = `http://127.0.0.1:${process.env.AIA_ENGINE_PORT ?? '8787'}`;
 

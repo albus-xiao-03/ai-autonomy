@@ -1,6 +1,6 @@
 # Architecture
 
-Spec ARCH-01, plans/R1.md §3. The Python engine lives in `aiautonomy/engines/`; the
+Spec ARCH-01, docs/engine-plan.md §3. The Python engine lives in `aiautonomy/engines/`; the
 TypeScript frontend lives in `aiautonomy/interfaces/`.
 
 ## Components
