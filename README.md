@@ -14,6 +14,10 @@ Level 1 starts near City Hall with Beacon Hill homes and Government Center offic
 
 Level 2 adds the West End and North End. Level 3 opens the river crossing to Kendall Square, the Financial District and Waterfront. Level 4 opens Charlestown. Neighborhoods use fixed illustrative building clusters.
 
+The Buildings tab restores player placement alongside the fixed Boston areas. Place residences, offices, shops, social venues, parks and parking freely on unlocked dry land. R or Rotate changes orientation by 45 degrees. Face the entrance toward a road and keep the driveway within 20 meters of the curb. Each type has a limited player inventory. Fixed neighborhood clusters do not consume that inventory.
+
+Player buildings save and carry into later levels. They can be added or bulldozed while the day runs. New residences add six residents, and new offices, leisure venues and reachable parking are used by the simulation. Bulldozing returns the building to inventory. Undo restores it and its household during the current session.
+
 The mayor, expanding levels and fixed Boston areas remain the core game. The road-building and camera controls are being developed toward a city-builder interaction style.
 
 Select highway, one-way or two-way roads. Highways have two lanes in each direction. Two-way roads have one lane in each direction. One-way travel follows the drawing direction. Choose Straight or Curve under Road shape. Straight roads support Click points and Drag road. Curves use three clicks for start, bend and endpoint. The full-width preview turns red for invalid placement and shows length or the reason construction is blocked. Snapping prioritizes access points, road endpoints and road edges. The Snap roads & angles toggle also enables 15-degree angle increments.
@@ -22,9 +26,9 @@ Choose Upgrade under Action, then choose a road type and elevation and click a p
 
 Road elevation supports ground, bridge/overpass and tunnel construction with all three road types. Structure endpoints must be on dry land. Bridges can cross water or land roads using continuous raised decks, ramps, railings and supports. Tunnels have portals and a dashed route guide. Underground vehicles are hidden until they emerge. Roads at different heights cross independently and connect at matching-height endpoints.
 
-Ground-road surfaces merge into continuous junctions, with road markings opening at the connection. Road endpoints snap to neighborhood access points and other roads. Neighborhood access needs a clear connection within 20 meters of the road curb. Light driveways confirm access. Orange markers indicate missing access. Road access help explains the rule. Neighborhoods and landmarks are fixed. Bulldoze removes player roads. Undo reverses the latest edit.
+Ground-road surfaces merge into continuous junctions, with road markings opening at the connection. Road endpoints snap to neighborhood access points and other roads. Neighborhood access needs a clear connection within 20 meters of the road curb. Light driveways confirm access. Orange markers indicate missing access. Road access help explains the rule. Neighborhoods and landmarks are fixed. Bulldoze removes player roads, buildings and traffic controls. Undo reverses the latest edit.
 
-Keyboard controls on the map use arrows for 25-meter cursor movement and Shift arrows for five-meter movement. Enter places an endpoint. With Move map selected, arrows pan the view.
+Keyboard controls on the map use arrows for 25-meter cursor movement and Shift arrows for five-meter movement. Enter places the selected building or road endpoint. With Move map selected, arrows pan the view.
 
 Rush-hour through traffic enters and exits along the fixed highway. Cars have low-poly bodies, roofs and wheels. Animation follows directed routes, smooth turns, lane positions and actual bridge/tunnel elevations. Traffic lights alternate crossing directions. Stop signs stop the selected incoming approach, while yield signs slow it. Through lanes maintain a car-length gap at queues. Junction priority and citywide collision physics remain simplified.
 

@@ -433,7 +433,6 @@
         preview.visible=true;frontArrow.visible=false;preview.scale.set(snapTolerance()*1.2,snapTolerance()*1.2,1);
         preview.position.set(p.x,1.5,p.z);preview.rotation.z=0;preview.material.color.set(CityPlan.land(p)?0x7fd6bd:0xed705a);render();return;
       }
-      p=CityPlan.snap(p);
       const size=CityPlan.buildingScale(type)*7.8||8;frontArrow.position.set(p.x,2,p.z);frontArrow.setDirection(new T.Vector3(Math.sin(rotation),0,Math.cos(rotation)));frontArrow.setLength(size*.8,4,3);preview.scale.set(size,size,1);preview.position.set(p.x,1.5,p.z);preview.rotation.z=-rotation;
       preview.material.color.set(CityPlan.buildingError({...p,type})?0xda785d:0xf5db96);
       if(previewLine){scene.remove(previewLine);previewLine.geometry.dispose();previewLine=null;}

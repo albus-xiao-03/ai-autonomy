@@ -39,6 +39,8 @@ window.CityPlan = (() => {
   function changed() {revision++;graph=null;junctionCache=null;}
   function buildingError(p,ignore) {
     const radius=buildingScale(p.type||'residential')*4.2;
+    const bounds=stages[level-1];
+    if(p.x-radius<bounds.minX||p.x+radius>bounds.maxX||p.z-radius<bounds.minZ||p.z+radius>bounds.maxZ)return 'Complete this level to unlock that land.';
     if(!land(p)||[[-radius,-radius],[radius,-radius],[radius,radius],[-radius,radius]].some(([x,z])=>!land({x:p.x+x,z:p.z+z})))return 'Choose dry land with room for the whole building.';
     if(landmarks.some(l=>dist(p,l)<l.radius+radius))return 'This historical landmark and its grounds are protected.';
     if(plan.buildings.some(b=>b.id!==ignore&&dist(b,p)<(b.radius||buildingScale(b.type)*4.2)+radius))return 'Leave room between buildings.';
@@ -309,7 +311,9 @@ window.CityPlan = (() => {
         ['waterfront','Waterfront','social',-71.0519,42.3624,Math.PI*1.5]
       ];
       const unlocked=[['beacon','government'],['beacon','government','west','north'],['beacon','government','west','north','kendall','financial','waterfront'],areas.map(a=>a[0])][level-1];
+      const playerBuildings=plan.buildings.filter(b=>!b.area);
       plan.buildings=areas.filter(a=>unlocked.includes(a[0])).map(([id,label,type,lon,lat,rotation])=>({id,label,type,...point([lon,lat]),rotation,radius:70,area:true}));
+      plan.buildings.push(...playerBuildings);
       if(!plan.roads.some(r=>r.fixed))plan.roads.unshift({id:'through-highway',a:{x:-430,z:275},b:{x:800,z:275},type:'highway',fixed:true});
       changed();
     },

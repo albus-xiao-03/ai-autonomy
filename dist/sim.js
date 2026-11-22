@@ -87,28 +87,35 @@ window.CitySim = (() => {
   function start(lots, config = {}) {
     const hall = window.CITY_HALL || {x:0, z:0, radius:12};
     const hospital = window.CITY_HOSPITAL || {x:-20,z:0};
-    const sites = window.CITY_LOTS.map(l => ({...l, type:lots[l.id]}));
+    let sites = window.CITY_LOTS.map(l => ({...l, type:lots[l.id]}));
     const districts = (window.CITY_DISTRICTS || [...new Set(sites.map(l => l.district))]).map(name => ({
       name, authority:90, status:'Stable'
     }));
     const ofType = t => sites.filter(l => l.type === t);
-    const workplaces = ofType('office');
-    const leisure = sites.filter(l => ['park','shop','social'].includes(l.type));
-    const parking = ofType('parking');
-    const residents=ofType('residential').flatMap((home,h)=>{
+    let workplaces = ofType('office');
+    let leisure = sites.filter(l => ['park','shop','social'].includes(l.type));
+    let parking = ofType('parking');
+    const households=new Map();
+    let nextResidentId=0;
+    function createHousehold(home,arrival=OPEN){
       const reachableWork=workplaces.filter(work=>route(home,work)&&route(work,home));
-      return Array.from({length:6},(_,j)=>{
-        const id=6*h+j,work=reachableWork[id%Math.max(1,reachableWork.length)]||null;
+      return Array.from({length:6},()=>{
+        const id=nextResidentId++,work=reachableWork[id%Math.max(1,reachableWork.length)]||null;
         const reachableLeisure=leisure.filter(venue=>route(work||home,venue)&&route(venue,home));
+        const regularDeparture=430+(id*13)%65;
+        const depart=arrival>regularDeparture?arrival+5+id%6:regularDeparture;
         return {id,home,work,venue:reachableLeisure[id%Math.max(1,reachableLeisure.length)]||null,
-          depart:430+(id*13)%65,leave:975+(id*11)%56,place:home,
+          depart,leave:Math.max(975+(id*11)%56,depart+60),place:home,
           activity:'home',trip:null,routeMinutes:0,jobsDone:0,visits:0,carAt:null};
       });
+    }
+    let residents=ofType('residential').flatMap(home=>{
+      const members=createHousehold(home);households.set(home.id,members);return members;
     });
     const outside = sites.filter(l => distance(l, hall) > hall.radius);
-    const focal = outside.find(l => l.district === 'North End' && l.type)
+    let focal = outside.find(l => l.district === 'North End' && l.type)
       || outside.find(l => l.district === 'North End') || outside[0];
-    const target = districts.find(d => d.name === focal?.district) || districts[0];
+    let target = districts.find(d => d.name === focal?.district) || districts[0];
     let minute = OPEN, elapsed = 0, hallProtected = true, strain = 0, relief = 0;
     let service = null, refuseCount = 0, dispatchCount = 0;
     let ended = false, disposed = false, controller = null, pending = false, modelOffline = false;
@@ -134,14 +141,18 @@ window.CitySim = (() => {
         if (distance(from, dest) > 0) legs.push({path:route(from,dest),kind});
         from = dest;
       };
-      // Drivers return to their parked cars first, then park close to the next destination.
-      if (p.id % 3 !== 1 && parking.length && mode !== 'walk') {
-        const lot = parking.reduce((best,l) => distance(l,to)<distance(best,to) ? l : best);
-        if (p.carAt) add(p.carAt,'resident');
-        add(lot,'car');
-        p.carAt = lot;
+      // Use reachable parking. An unconnected lot does not interrupt existing commutes.
+      let usesParking=false;
+      if(p.id%3!==1&&mode!=='walk'){
+        const driveFrom=p.carAt||p.place;
+        const reachableParking=parking.filter(lot=>route(driveFrom,lot)&&route(lot,to)&&(!p.carAt||route(p.place,p.carAt)));
+        const lot=reachableParking.sort((a,b)=>distance(a,to)-distance(b,to))[0];
+        if(lot){
+          if(p.carAt)add(p.carAt,'resident');
+          add(lot,'car');p.carAt=lot;usesParking=true;
+        }
       }
-      add(to,p.id%3!==1&&!parking.length?'car':'resident');
+      add(to,p.id%3!==1&&!usesParking?'car':'resident');
       if (legs.some(leg => !leg.path)) { p.activity = 'stranded'; return; }
       const peak = minute < 570 || (minute > 970 && minute < 1060);
       let duration = 0;
@@ -156,8 +167,18 @@ window.CitySim = (() => {
     }
 
     function refreshNetwork(){
-      if(disposed||ended)return;
+      if(disposed)return;
+      sites=window.CITY_LOTS.map(l=>({...l,type:lots[l.id]})).filter(l=>l.type);
+      workplaces=ofType('office');leisure=sites.filter(l=>['park','shop','social'].includes(l.type));parking=ofType('parking');
+      residents=ofType('residential').flatMap(home=>{
+        if(!households.has(home.id))households.set(home.id,createHousehold(home,minute));
+        const members=households.get(home.id);members.forEach(p=>{p.home=home;});return members;
+      });
+      focal=sites.find(site=>site.id===focal?.id)||sites.find(site=>distance(site,hall)>hall.radius)||sites[0];
+      target=districts.find(d=>d.name===focal?.district)||districts[0];
+      if(ended)return;
       for(const p of residents){
+        if(p.carAt&&!parking.some(lot=>lot.id===p.carAt.id))p.carAt=null;
         let oldTrip=p.trip;
         if(oldTrip&&minute+elapsed-oldTrip.start>=oldTrip.duration){
           p.place=oldTrip.to;p.activity=oldTrip.activity;p.routeMinutes+=oldTrip.duration;
@@ -178,15 +199,24 @@ window.CitySim = (() => {
         const venues=leisure.filter(venue=>route(p.work||p.home,venue)&&route(venue,p.home));
         p.venue=venues[p.id%Math.max(1,venues.length)]||null;
         if(oldTrip){
-          const destination=oldTrip.to;
+          let destination=sites.find(site=>site.id===oldTrip.to.id),activity=oldTrip.activity;
+          if(!destination){destination=activity==='work'?p.work:activity==='social'?p.venue:p.home;}
+          if(!destination){destination=p.home;activity='home';}
           const road=CityPlan.nearestRoad(p.place,2);
           const onStreet=road&&Math.abs(CityPlan.heightAt(p.place,road)-(p.place.height||0))<1;
           const atBuilding=CityPlan.plan.buildings.some(building=>CityPlan.dist(p.place,building)<(building.radius||25)&&CityPlan.access(building));
-          if((onStreet||atBuilding)&&route(p.place,destination))addTrip(p,destination,oldTrip.activity);
-          else{p.activity='stranded';p.strandedDestination={to:destination,activity:oldTrip.activity};}
+          if((onStreet||atBuilding)&&route(p.place,destination))addTrip(p,destination,activity);
+          else{p.activity='stranded';p.strandedDestination={to:destination,activity};}
+        }else if(['work','social'].includes(p.activity)&&!sites.some(site=>site.id===p.place.id)){
+          const destination=(p.activity==='work'?p.work:p.venue)||p.home;
+          const activity=destination.id===p.home.id?'home':p.activity;
+          if(route(p.place,destination))addTrip(p,destination,activity);
+          else{p.activity='stranded';p.strandedDestination={to:destination,activity};}
         }else if(p.activity==='stranded'){
-          const destination=p.strandedDestination?.to||(minute<p.leave?p.work:p.home);
-          if(destination&&route(p.place,destination))addTrip(p,destination,p.strandedDestination?.activity||(minute<p.leave?'work':'home'));
+          const remembered=sites.find(site=>site.id===p.strandedDestination?.to?.id);
+          const destination=remembered||(minute<p.leave?p.work:p.home);
+          const activity=remembered?p.strandedDestination.activity:(minute<p.leave?'work':'home');
+          if(destination&&route(p.place,destination))addTrip(p,destination,activity);
         }
       }
       if(service){

@@ -3,21 +3,25 @@
   const stock = {residential:6, office:4, shop:3, social:3, park:4, parking:3};
   const labels = {residential:'Residences', office:'Offices', shop:'Shops', social:'Social venues', park:'Parks', parking:'Parking'};
   const lots = {};
-  let selection=null,sim=null,paused=false,speed=1,lastEntry=null,settings='qwen',rotation=0,roadStart=null,curveControl=null,startingLevel=1;
+  let selection=null,sim=null,paused=false,speed=1,lastEntry=null,settings='qwen',rotation=0,roadStart=null,curveControl=null,hoverPoint=null,startingLevel=1;
   const undo=[];
   const time=value=>String(Math.floor(value/60)).padStart(2,'0')+':'+String(Math.floor(value%60)).padStart(2,'0');
-  const left=type=>stock[type]-CityPlan.plan.buildings.filter(b=>b.type===type).length;
+  const left=type=>stock[type]-CityPlan.plan.buildings.filter(b=>!b.area&&b.type===type).length;
   const notice=message=>{$('notice').textContent=message;};
   try{
     const saved=JSON.parse(localStorage.getItem('borough-levels-v1')||'null');
     startingLevel=Number.isInteger(saved?.level)?saved.level:1;
     CityPlan.seedArcade(startingLevel);
     if(saved?.roads)for(const r of saved.roads)if(!r.fixed&&CityPlan.widths[r.type]&&r.a&&r.b&&!CityPlan.roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId))CityPlan.plan.roads.push(r);
+    if(saved?.buildings)for(const b of saved.buildings){
+      const valid=Object.hasOwn(stock,b.type)&&Number.isFinite(b.x)&&Number.isFinite(b.z)&&Number.isFinite(b.rotation)&&b.id!=null&&!CityPlan.plan.buildings.some(existing=>existing.id===b.id);
+      if(valid&&left(b.type)>0&&!CityPlan.buildingError(b))CityPlan.plan.buildings.push({...b,area:false});
+    }
     if(saved?.controls)for(const c of saved.controls)if(CityPlan.controlTypes[c.kind]&&CityPlan.junctions().some(j=>CityPlan.dist(c,j)<.1)&&(!c.approach||(Number.isFinite(c.approach.x)&&Number.isFinite(c.approach.z))))CityPlan.plan.controls.push(c);
     settings=localStorage.getItem('borough-mayor')||'qwen';
   }catch{CityPlan.seedArcade();}
   CityPlan.changed();CityPlan.pruneControls();
-  function save(){try{localStorage.setItem('borough-levels-v1',JSON.stringify({level:CityPlan.level,roads:CityPlan.plan.roads,controls:CityPlan.plan.controls}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
+  function save(){try{localStorage.setItem('borough-levels-v1',JSON.stringify({level:CityPlan.level,roads:CityPlan.plan.roads,controls:CityPlan.plan.controls,buildings:CityPlan.plan.buildings.filter(b=>!b.area)}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
   const world=CityWorld.mount($('world'),{
     onPoint:place,
     getTool:()=>({pan:!selection,dragRoad:!!CityPlan.widths[selection]&&$('roadMode').value==='drag'&&$('roadShape').value==='straight'&&$('roadAction').value==='build'}),
@@ -34,9 +38,14 @@
     return curveControl?CityPlan.curve(roadStart,curveControl,end):[roadStart,end];
   }
   function hover(p){
+    hoverPoint=p;
     if(!selection)return;
     const roadTool=!!CityPlan.widths[selection];
     if(selection==='remove'||selection==='reverse'||(roadTool&&$('roadAction').value==='upgrade')){
+      if(selection==='remove'){
+        const building=CityPlan.plan.buildings.find(b=>!b.area&&CityPlan.dist(p,b)<CityPlan.buildingScale(b.type)*4.2);
+        if(building){world.ghost(building,building.type,building.rotation);return;}
+      }
       const road=CityPlan.nearestRoad(p,world.snapTolerance());
       if(!road){world.ghost(null);return;}
       const group=CityPlan.plan.roads.filter(r=>road.pathId?r.pathId===road.pathId:r===road).sort((a,b)=>(a.pathStart||0)-(b.pathStart||0));
@@ -51,19 +60,26 @@
       $('buildHint').textContent=error||Math.round(length)+' m · '+($('roadShape').value==='curve'&&!curveControl?'Click to set bend':'Click to build');
       return;
     }
+    if(Object.hasOwn(stock,selection)){
+      world.ghost(p,selection,rotation);
+      const error=CityPlan.buildingError({...p,type:selection});
+      const candidate={...p,type:selection,rotation,id:'preview'};
+      $('buildHint').textContent=error||(CityPlan.access(candidate)?'Road access available · click to place':'Click to place · connect the entrance to a road');
+      return;
+    }
     world.ghost(roadTool?draftPoint(p):p,selection,rotation);
     $('buildHint').textContent=roadTool?'Choose start point':CityPlan.controlTypes[selection]||'';
   }
   function networkEdited(){
-    sim?.refreshNetwork();
-    syncSites();save();drawPalette();render();
+    syncSites();sim?.refreshNetwork();
+    save();drawPalette();render();
   }
   function syncSites(){CITY_LOTS.splice(0,CITY_LOTS.length,...CityPlan.plan.buildings.map(b=>({...b,district:CityPlan.district(b)})));for(const key of Object.keys(lots))delete lots[key];for(const b of CITY_LOTS)lots[b.id]=b.type;}
   function choose(type){selection=selection===type?null:type;roadStart=curveControl=null;world.ghost(null);$('buildHint').textContent='';drawPalette();render();notice(CityPlan.controlTypes[selection]?(selection==='signal'?'Click a road junction to install traffic lights.':'Click the incoming street near a junction. The preview arrow shows which traffic must obey the sign.'):!selection?'Drag anywhere on the map to move. Wheel to zoom at the pointer.':CityPlan.widths[type]?($('roadAction').value==='upgrade'?'Click a player road to upgrade it.':$('roadMode').value==='drag'?'Drag from the road start to its end.':'Click the start and end of a road. Continue clicking to extend it. Escape ends the road.'):'Click open land to place a building. R rotates it.');}
   function drawPalette(){
     $('palette').replaceChildren();
     for(const type of Object.keys(stock)){
-      const button=document.createElement('button');button.className='tile';button.disabled=false;button.setAttribute('aria-pressed',selection===type);
+      const button=document.createElement('button');button.className='tile';button.disabled=left(type)<=0&&selection!==type;button.setAttribute('aria-pressed',selection===type);
       button.innerHTML='<img alt="" src="art/'+type+'.png"><span>'+labels[type]+'</span><b>×'+left(type)+'</b>';
       button.onclick=()=>choose(type);$('palette').append(button);
     }
@@ -93,7 +109,7 @@
       }
     }else{
       if(!left(selection)){notice('All buildings of this type have been placed.');return;}
-      error=CityPlan.place(p,selection,rotation);
+      error=CityPlan.place(p,selection,rotation);if(!error)notice(labels[selection]+' placed.');
     }
     if(error){notice(error);return;}
     undo.push(snapshot);world.ghost(null);$('buildHint').textContent='';networkEdited();return true;
@@ -104,7 +120,7 @@
   $('clearRoads').onclick=()=>{
     undo.push(JSON.stringify(CityPlan.plan));CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed);CityPlan.plan.controls=[];CityPlan.changed();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Player roads cleared. Undo restores them.');
   };
-  function rotate(){rotation=(rotation+Math.PI/4)%(Math.PI*2);drawPalette();}
+  function rotate(){rotation=(rotation+Math.PI/4)%(Math.PI*2);drawPalette();if(hoverPoint&&Object.hasOwn(stock,selection))hover(hoverPoint);}
   $('rotate').onclick=rotate;
   $('nextLevel').onclick=()=>{
     sim?.dispose();sim=null;paused=false;
@@ -165,9 +181,9 @@
       $('districts').replaceChildren(...rows(s.districts.map(d=>[d.name,d.status])));
     }
     const disconnected=CityPlan.plan.buildings.filter(b=>!CityPlan.access(b));
-    $('areas').replaceChildren(...CityPlan.plan.buildings.map(b=>{const row=document.createElement('div');row.className='areaRow';const name=document.createElement('span');name.textContent=b.label;const status=document.createElement('small');status.textContent=(b.type==='residential'?'Homes':b.type==='office'?'Offices':'Social')+' · '+(CityPlan.access(b)?'Connected':'Needs road');row.append(name,status);return row;}));
-    $('accessSummary').textContent=disconnected.length?(CityPlan.plan.buildings.length-disconnected.length)+' / '+CityPlan.plan.buildings.length+' areas connected':'All areas connected';
-    $('time').textContent=time(s?.minute??360);$('pop').textContent=s?.population??0;
+    $('areas').replaceChildren(...CityPlan.plan.buildings.map(b=>{const row=document.createElement('div');row.className='areaRow';const name=document.createElement('span');name.textContent=b.label||labels[b.type]||'Building';const status=document.createElement('small');status.textContent=(labels[b.type]||b.type)+' · '+(CityPlan.access(b)?'Connected':'Needs road');row.append(name,status);return row;}));
+    $('accessSummary').textContent=disconnected.length?(CityPlan.plan.buildings.length-disconnected.length)+' / '+CityPlan.plan.buildings.length+' sites connected':'All sites connected';
+    $('time').textContent=time(s?.minute??360);$('pop').textContent=s?.population??CityPlan.plan.buildings.filter(b=>b.type==='residential').length*6;
     $('happy').textContent=s?Math.round(s.satisfaction)+'%':'—';$('authority').textContent=s?Math.round(s.authority)+'%':'—';
     $('hall').textContent=s?.hallProtected===false?'Exposed':'Protected';
     $('phase').textContent=!s?'Planning':s.finished?'Day complete':paused?'Paused':'Day running';
@@ -195,7 +211,7 @@
   $('run').onclick=()=>{if(!sim||sim.getState().finished)start();else{paused=!paused;render();}};
   $('plan').onclick=()=>{sim?.dispose();sim=null;paused=false;speed=1;$('speed').textContent='1×';notice('Day reset. Your road plan is preserved.');drawPalette();render();};
   $('speed').onclick=()=>{speed=speed===1?3:speed===3?8:1;$('speed').textContent=speed+'×';};
-  $('remove').onclick=()=>{choose('remove');notice('Click a road to remove it. Neighborhoods and landmarks are fixed.');};
+  $('remove').onclick=()=>{choose('remove');notice('Click a player building, road or traffic control to remove it. Fixed neighborhoods and landmarks are protected.');};
   $('history').onclick=$('bubble').onclick=()=>{history(sim?.getState());$('historyPane').hidden=false;};
   $('in').onclick=()=>world.zoom(1);$('out').onclick=()=>world.zoom(-1);$('reset').onclick=()=>world.resetView();
   function dialog(title) {
@@ -203,7 +219,7 @@
   }
   $('accessHelp').onclick=()=>{
     const body=dialog('Neighborhood road access');
-    const p=document.createElement('p');p.className='muted';p.textContent='Each neighborhood has a gold access point on its boundary. Connect a road to that point, or pass within 20 meters with a clear connection on land. A light driveway confirms access. Roads snap to access points. Neighborhoods are fixed for this arcade level. Homes need a road route to an office and back, following one-way directions. Use bridges across the river. You can run a partially connected city and watch which residents reach work.';body.append(p);
+    const p=document.createElement('p');p.className='muted';p.textContent='Fixed neighborhoods have gold access points. Player buildings have a gold entrance on their front side. Connect a road to that point, or pass within 20 meters with a clear connection on land. A light driveway confirms access. Roads snap to access points. Use R or Rotate before placement to face a building entrance toward the road. Player buildings can be bulldozed and placed again. Homes need a road route to an office and back, following one-way directions. Use bridges across the river. You can run a partially connected city and watch which residents reach work.';body.append(p);
   };
   $('view').onclick=()=>world.toggleView();
   $('settings').onclick=()=>{
