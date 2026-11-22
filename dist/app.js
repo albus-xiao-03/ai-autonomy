@@ -18,9 +18,9 @@
       if(valid&&left(b.type)>0&&!CityPlan.buildingError(b))CityPlan.plan.buildings.push({...b,area:false});
     }
     if(saved?.controls)for(const c of saved.controls)if(CityPlan.controlTypes[c.kind]&&CityPlan.junctions().some(j=>CityPlan.dist(c,j)<.1)&&(!c.approach||(Number.isFinite(c.approach.x)&&Number.isFinite(c.approach.z))))CityPlan.plan.controls.push(c);
-    settings=localStorage.getItem('borough-mayor')||'qwen';
+    settings=localStorage.getItem('borough-mayor')||'qwen';$('autoIncidents').checked=localStorage.getItem('borough-auto-incidents')!=='false';
   }catch{CityPlan.seedArcade();}
-  CityPlan.changed();CityPlan.pruneControls();
+  CityPlan.subdividePlayerRoads();CityPlan.changed();CityPlan.pruneControls();
   function save(){try{localStorage.setItem('borough-levels-v1',JSON.stringify({level:CityPlan.level,roads:CityPlan.plan.roads,controls:CityPlan.plan.controls,buildings:CityPlan.plan.buildings.filter(b=>!b.area)}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
   const world=CityWorld.mount($('world'),{
     onPoint:place,
@@ -41,6 +41,7 @@
     hoverPoint=p;
     if(!selection)return;
     const roadTool=!!CityPlan.widths[selection];
+    if(selection.startsWith('incident:')){world.incidentPreview(p,selection.split(':')[1]);return;}
     if(selection==='remove'||selection==='reverse'||(roadTool&&$('roadAction').value==='upgrade')){
       if(selection==='remove'){
         const building=CityPlan.plan.buildings.find(b=>!b.area&&CityPlan.dist(p,b)<CityPlan.buildingScale(b.type)*4.2);
@@ -75,7 +76,7 @@
     save();drawPalette();render();
   }
   function syncSites(){CITY_LOTS.splice(0,CITY_LOTS.length,...CityPlan.plan.buildings.map(b=>({...b,district:CityPlan.district(b)})));for(const key of Object.keys(lots))delete lots[key];for(const b of CITY_LOTS)lots[b.id]=b.type;}
-  function choose(type){selection=selection===type?null:type;roadStart=curveControl=null;world.ghost(null);$('buildHint').textContent='';drawPalette();render();notice(CityPlan.controlTypes[selection]?(selection==='signal'?'Click a road junction to install traffic lights.':'Click the incoming street near a junction. The preview arrow shows which traffic must obey the sign.'):!selection?'Drag anywhere on the map to move. Wheel to zoom at the pointer.':CityPlan.widths[type]?($('roadAction').value==='upgrade'?'Click a player road to upgrade it.':$('roadMode').value==='drag'?'Drag from the road start to its end.':'Click the start and end of a road. Continue clicking to extend it. Escape ends the road.'):'Click open land to place a building. R rotates it.');}
+  function choose(type){selection=selection===type?null:type;roadStart=curveControl=null;world.ghost(null);$('buildHint').textContent='';drawPalette();render();notice(selection?.startsWith('incident:')?'Click unlocked land to trigger '+CityIncidents.types[selection.split(':')[1]].label.toLowerCase()+'.':CityPlan.controlTypes[selection]?(selection==='signal'?'Click a road junction to install traffic lights.':'Click the incoming street near a junction. The preview arrow shows which traffic must obey the sign.'):!selection?'Drag anywhere on the map to move. Wheel to zoom at the pointer.':CityPlan.widths[type]?($('roadAction').value==='upgrade'?'Click a player road to upgrade it.':$('roadMode').value==='drag'?'Drag from the road start to its end.':'Click the start and end of a road. Continue clicking to extend it. Escape ends the road.'):'Click open land to place a building. R rotates it.');}
   function drawPalette(){
     $('palette').replaceChildren();
     for(const type of Object.keys(stock)){
@@ -85,6 +86,9 @@
     }
     for(const button of document.querySelectorAll('[data-control]')){button.disabled=false;button.setAttribute('aria-pressed',selection===button.dataset.control);}
     for(const button of document.querySelectorAll('[data-road]')){button.disabled=false;button.setAttribute('aria-pressed',selection===button.dataset.road);}
+    for(const button of document.querySelectorAll('[data-event]')){
+      button.disabled=!sim||sim.getState().finished;button.setAttribute('aria-pressed',selection==='incident:'+button.dataset.event);
+    }
     $('pan').setAttribute('aria-pressed',!selection);
     $('clearRoads').disabled=!CityPlan.plan.roads.some(r=>!r.fixed);
     $('remove').classList.toggle('active',selection==='remove');$('remove').disabled=false;$('undo').disabled=!undo.length;
@@ -92,6 +96,11 @@
   }
   function place(p){
     if(!selection)return;
+    if(selection.startsWith('incident:')){
+      if(!sim||sim.getState().finished){notice('Run the day before triggering an incident.');return;}
+      const kind=selection.split(':')[1],error=sim.triggerIncident(kind,p);
+      notice(error||CityIncidents.types[kind].label+' triggered. The mayor will review the response.');render();return;
+    }
     let error='';
     const snapshot=JSON.stringify(CityPlan.plan);
     if(selection==='remove')error=CityPlan.remove(p);
@@ -115,6 +124,8 @@
     undo.push(snapshot);world.ghost(null);$('buildHint').textContent='';networkEdited();return true;
   }
   document.querySelectorAll('[data-road]').forEach(button=>button.onclick=()=>choose(button.dataset.road));
+  document.querySelectorAll('[data-event]').forEach(button=>button.onclick=()=>choose('incident:'+button.dataset.event));
+  $('autoIncidents').onchange=()=>{sim?.setAutoIncidents($('autoIncidents').checked);try{localStorage.setItem('borough-auto-incidents',$('autoIncidents').checked);}catch{}};
   document.querySelectorAll('[data-control]').forEach(button=>button.onclick=()=>choose(button.dataset.control));
   $('undo').onclick=()=>{const snapshot=undo.pop();if(!snapshot)return;const old=JSON.parse(snapshot);CityPlan.plan.buildings=old.buildings;CityPlan.plan.roads=old.roads;CityPlan.plan.controls=old.controls||[];CityPlan.changed();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Last edit undone.');};
   $('clearRoads').onclick=()=>{
@@ -166,22 +177,32 @@
     const s=sim?.getState(), e=s?.events.at(-1);
     $('planningTools').hidden=false;
     $('cityLife').hidden=!s||s.finished;
+    document.querySelectorAll('[data-event]').forEach(button=>button.disabled=!s||s.finished);
     $('levelTitle').textContent='Level '+CityPlan.level+' / 4';
-    const entry=CityPlan.plan.roads.find(r=>r.fixed);
+
     const homes=CityPlan.plan.buildings.filter(b=>b.type==='residential');
-    const entryConnected=homes.every(h=>CityPlan.route(h,entry.a)&&CityPlan.route(entry.a,h));
+
     const allConnected=CityPlan.plan.buildings.every(b=>CityPlan.access(b));
-    const complete=!!s?.finished&&s.workersArrived===s.population&&s.atHome===s.population&&entryConnected&&allConnected;
+    const complete=!!s?.finished&&s.workersArrived===s.population&&s.atHome===s.population&&allConnected&&!(s.incidents||[]).some(i=>i.status!=='resolved');
     $('nextLevel').hidden=!complete||CityPlan.level===4;
-    $('levelGoal').textContent=complete?(CityPlan.level===4?'Boston is connected. All levels complete.':'Level complete. Expand the map when you’re ready.'):'Connect homes, offices and the entry highway. Get every resident to work and home.';
+    $('levelGoal').textContent=complete?(CityPlan.level===4?'Boston is connected. All levels complete.':'Level complete. Expand the map when you’re ready.'):'Connect homes and offices. Keep residents safe and restore roads after incidents.';
     $('engine').textContent=s?.mayorMode || (settings==='qwen'?'Local Qwen · 8B':'Civic controller');
     if(s) {
       const rows=(items)=>items.map(([key,value])=>{const row=document.createElement('div');row.className='statrow';const name=document.createElement('span');name.textContent=key;const val=document.createElement('b');val.textContent=value;row.append(name,val);return row;});
-      $('routines').replaceChildren(...rows([['At home',s.atHome],['In transit',s.commuting],['At work',s.atWork],['Socializing',s.socializing],['No route',s.stranded||0],['Through traffic',s.throughTraffic||0]]));
+      $('routines').replaceChildren(...rows([['At home',s.atHome],['In transit',s.commuting],['At work',s.atWork],['Socializing',s.socializing],['No route',s.stranded||0],['Sheltered',s.sheltered||0],['Active incidents',(s.incidents||[]).filter(i=>!['resolved','averted'].includes(i.status)).length]]));
       $('districts').replaceChildren(...rows(s.districts.map(d=>[d.name,d.status])));
     }
+    $('serviceAccess').textContent=CityPlan.landmarks.filter(l=>['hall','hospital'].includes(l.site)).map(l=>l.name+' · '+(CityPlan.access(l)?'road access connected':'needs road access')).join(' / ');
+    $('incidentCards').replaceChildren(...(s?.incidents||[]).filter(i=>!['resolved','averted'].includes(i.status)).map(incident=>{
+      const card=document.createElement('article');card.className='incidentCard';
+      const title=document.createElement('strong');title.textContent=incident.label+' · '+incident.district;
+      const text=document.createElement('p');text.textContent=incident.response+' · '+incident.severity+'% severity'+(incident.responseAccess?' · City Hall route '+(incident.responseAccess.cityHall?'open':'missing')+' · EMS route '+(incident.responseAccess.massGeneral?'open':'missing'):'');
+      const button=document.createElement('button');button.className='secondary';button.textContent='Request mayor response';
+      button.onclick=()=>{sim?.requestResponse(incident.id);render();};
+      card.append(title,text,button);return card;
+    }));
     const disconnected=CityPlan.plan.buildings.filter(b=>!CityPlan.access(b));
-    $('areas').replaceChildren(...CityPlan.plan.buildings.map(b=>{const row=document.createElement('div');row.className='areaRow';const name=document.createElement('span');name.textContent=b.label||labels[b.type]||'Building';const status=document.createElement('small');status.textContent=(labels[b.type]||b.type)+' · '+(CityPlan.access(b)?'Connected':'Needs road');row.append(name,status);return row;}));
+    $('areas').replaceChildren(...CityPlan.plan.buildings.map(b=>{const row=document.createElement('div');row.className='areaRow';const name=document.createElement('span');name.textContent=b.label||labels[b.type]||'Building';const status=document.createElement('small');status.textContent=(labels[b.type]||b.type)+' · '+(CityPlan.access(b)?'Connected':'Needs road')+((s?.damage?.[b.id]||0)>0?' · Damage '+s.damage[b.id]+'%':'');row.append(name,status);return row;}));
     $('accessSummary').textContent=disconnected.length?(CityPlan.plan.buildings.length-disconnected.length)+' / '+CityPlan.plan.buildings.length+' sites connected':'All sites connected';
     $('time').textContent=time(s?.minute??360);$('pop').textContent=s?.population??CityPlan.plan.buildings.filter(b=>b.type==='residential').length*6;
     $('happy').textContent=s?Math.round(s.satisfaction)+'%':'—';$('authority').textContent=s?Math.round(s.authority)+'%':'—';
@@ -205,7 +226,7 @@
     if(!CityPlan.plan.roads.length){notice('Draw roads to connect your homes and workplaces.');return;}
     if(!homes.some(h=>offices.some(o=>CityPlan.route(h,o)&&CityPlan.route(o,h)))){notice('Connect at least one residential area to an office area with a route in both directions.');return;}
     roadStart=curveControl=null;world.ghost(null);
-    sim?.dispose();sim=CitySim.start(lots,settings==='qwen'?{modelEndpoint:'http://localhost:11434/api/chat',model:'qwen3:8b'}:{});
+    sim?.dispose();sim=CitySim.start(lots,settings==='qwen'?{modelEndpoint:'http://localhost:11434/api/chat',model:'qwen3:8b',autoIncidents:$('autoIncidents').checked}:{autoIncidents:$('autoIncidents').checked});
     paused=false;selection=null;drawPalette();notice('The city is running. Watch the mayor’s orders and their outcomes.');render();
   }
   $('run').onclick=()=>{if(!sim||sim.getState().finished)start();else{paused=!paused;render();}};
@@ -238,6 +259,7 @@
       if(now-lastUI>=120){render();lastUI=now;}
       else{const state=sim.getState();world.update(lots,state.agents,state);}
     }
+    else if(sim&&now-lastUI>=250){render();lastUI=now;}
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

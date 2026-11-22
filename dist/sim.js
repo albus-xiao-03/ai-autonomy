@@ -80,7 +80,7 @@ window.CitySim = (() => {
     if(!road||CityPlan.dist(p,road.p)>4)return p;
     const junctionDistance=Math.min(Infinity,...CityPlan.junctions().map(j=>CityPlan.dist(j,p)));
     const taper=Math.min(1,junctionDistance/12);
-    const lane=road.r.type==='oneway'?0:road.r.type==='highway'?(id%2?5.1:1.75):1.8;
+    const lane=road.r.oneway?(road.r.type==='highway'?(id%2?1.75:-1.75):0):road.r.type==='oneway'?0:road.r.type==='highway'?(id%2?5.1:1.75):1.8;
     return {...p,x:p.x-p.direction.z*lane*taper,z:p.z+p.direction.x*lane*taper};
   }
 
@@ -91,9 +91,9 @@ window.CitySim = (() => {
     const districts = (window.CITY_DISTRICTS || [...new Set(sites.map(l => l.district))]).map(name => ({
       name, authority:90, status:'Stable'
     }));
-    const ofType = t => sites.filter(l => l.type === t);
+    const ofType = t => sites.filter(l => l.type === t&&(t==='residential'||(l.damage||0)<75));
     let workplaces = ofType('office');
-    let leisure = sites.filter(l => ['park','shop','social'].includes(l.type));
+    let leisure = sites.filter(l => ['park','shop','social'].includes(l.type)&&(l.damage||0)<75);
     let parking = ofType('parking');
     const households=new Map();
     let nextResidentId=0;
@@ -128,6 +128,12 @@ window.CitySim = (() => {
     };
     record('The city is waking up. I’ll watch the morning commute from City Hall.',
       'Opened City Hall', 'Applied', 'Morning service is active.', 'Downtown');
+
+    const incidentSystem=CityIncidents.create({
+      minute:()=>minute,sites:()=>sites,districts:()=>districts,protected:()=>hallProtected,
+      deciding:()=>pending,automatic:config.autoIncidents!==false,record,route,position,
+      reroute:()=>refreshNetwork(),review:(incident,fallback)=>decide(fallback,'Choose a response to this active city incident.',incident)
+    });
 
     function setAuthority(d, delta) {
       d.authority = clamp(d.authority+delta,0,100);
@@ -168,8 +174,9 @@ window.CitySim = (() => {
 
     function refreshNetwork(){
       if(disposed)return;
-      sites=window.CITY_LOTS.map(l=>({...l,type:lots[l.id]})).filter(l=>l.type);
-      workplaces=ofType('office');leisure=sites.filter(l=>['park','shop','social'].includes(l.type));parking=ofType('parking');
+      const currentDamage=incidentSystem.damage();
+      sites=window.CITY_LOTS.map(l=>({...l,type:lots[l.id],damage:currentDamage[l.id]||0})).filter(l=>l.type);
+      workplaces=ofType('office');leisure=sites.filter(l=>['park','shop','social'].includes(l.type)&&(l.damage||0)<75);parking=ofType('parking');
       residents=ofType('residential').flatMap(home=>{
         if(!households.has(home.id))households.set(home.id,createHousehold(home,minute));
         const members=households.get(home.id);members.forEach(p=>{p.home=home;});return members;
@@ -179,6 +186,8 @@ window.CitySim = (() => {
       if(ended)return;
       for(const p of residents){
         if(p.carAt&&!parking.some(lot=>lot.id===p.carAt.id))p.carAt=null;
+        if(incidentSystem.isSheltered(p.home.id)){p.trip=null;p.activity='sheltered';p.place=p.home;continue;}
+        if(p.activity==='sheltered'){p.activity='home';if(minute<p.leave)p.depart=minute+1;}
         let oldTrip=p.trip;
         if(oldTrip&&minute+elapsed-oldTrip.start>=oldTrip.duration){
           p.place=oldTrip.to;p.activity=oldTrip.activity;p.routeMinutes+=oldTrip.duration;
@@ -219,6 +228,7 @@ window.CitySim = (() => {
           if(destination&&route(p.place,destination))addTrip(p,destination,activity);
         }
       }
+      incidentSystem.refreshUnits();
       if(service){
         const current=position(service.path,(minute+elapsed-service.start)/Math.max(5,service.path.length/440));
         const replacement=route(current,focal);
@@ -248,10 +258,21 @@ window.CitySim = (() => {
 
     // Freeze the simulation clock while a request is in flight. Real-world request
     // latency should not change which event or district a mayor's decision affects.
-    async function decide(fallback, question) {
+    async function decide(fallback, question, incident=null) {
+      if(pending)return;
+      const responseAccess=incident?incidentSystem.accessFor(incident):null;
+      const districtAuthority=districts.find(d=>d.name===(incident?.district||target?.name))?.authority||0;
+      const allowed=incident?['outreach']:['dispatch','outreach'];
+      if(incident&&incident.severity<25)allowed.push('monitor');
+      if(incident?.kind==='protest')allowed.push('mediate');
+      if(incident&&districtAuthority>=40){
+        if(responseAccess.cityHall)allowed.push('repair','evacuate');
+        if(incident.kind==='flood'?responseAccess.massGeneral:responseAccess.cityHall)allowed.push('dispatch');
+      }
       const enact = (order, statement) => {
         const count = events.length;
-        if (order === 'outreach') outreach(statement);
+        if(incident)incidentSystem.respond(incident,order,statement);
+        else if (order === 'outreach') outreach(statement);
         else if (order === 'dispatch') dispatch(statement);
         if (events.length > count) events.at(-1).source = mayorMode === 'Qwen' ? 'Qwen 3 · 8B' : 'Civic controller';
       };
@@ -268,20 +289,23 @@ window.CitySim = (() => {
         const url = new URL(config.modelEndpoint);
         if (!['http:', 'https:'].includes(url.protocol)) throw Error('Unsupported endpoint');
         const prompt = {
-          minute, district:target.name, authority:target.authority,
-          actionRules:'Dispatch arrives only with authority of at least 40. Outreach can restore 14–29 authority.',
+          minute,district:incident?.district||target.name,authority:districts.find(d=>d.name===(incident?.district||target.name))?.authority,
+          incident:incident?{kind:incident.kind,status:incident.status,severity:incident.severity,response:incident.response,sitesAffected:incident.affectedSites.length}:null,
+          responseAccess,
+          recentOutcomes:events.slice(-4).map(event=>({action:event.action,status:event.status,outcome:event.outcome})),
+          actionRules:incident?'Repair sends road crews. Dispatch sends fire, medical or police units. Mediate resolves protests remotely. Evacuate shelters affected households but repairs remain necessary. Outreach restores authority when crews refuse. Responses need road access from City Hall or Mass General. Monitor waits.':'Dispatch needs authority of at least 40. Outreach restores trust.',
           previousOrder:events.filter(e => ['Ambulance dispatched','Dispatch refused','Community outreach'].includes(e.action)).at(-1),
-          question
+          question,urgency:incident?.severity>=25?'Choose an available concrete response now. High-severity incidents need action.':'Review current outcomes.'
         };
         const messages = [
-          {role:'system',content:'You are the mayor in a fictional Boston city simulator. Return only JSON with order ("dispatch" or "outreach") and statement (one short public announcement, no analysis).'},
+          {role:'system',content:'You are the mayor in a fictional Boston city simulator. Return only JSON with order from '+allowed.join(', ')+', and statement as one short public announcement.'},
           {role:'user',content:JSON.stringify(prompt)+' /no_think'}
         ];
         const model = config.model || 'qwen3:8b';
         // Ollama's native API can disable reasoning explicitly. Its compatible
         // API can consume the entire response budget before emitting JSON.
         const localOllama = ['localhost','127.0.0.1','[::1]'].includes(url.hostname) && url.port === '11434';
-        const schema = {type:'object',properties:{order:{type:'string',enum:['dispatch','outreach']},
+        const schema = {type:'object',properties:{order:{type:'string',enum:allowed},
           statement:{type:'string'}},required:['order','statement']};
         const body = localOllama ? {model,messages,stream:false,think:false,format:schema,
           options:{temperature:0,num_predict:100,num_ctx:2048}} :
@@ -292,7 +316,7 @@ window.CitySim = (() => {
         if (!reply.ok) throw Error('Model unavailable');
         const data = await reply.json();
         const choice = JSON.parse((localOllama ? data.message.content : data.choices[0].message.content).trim());
-        if (!['dispatch','outreach'].includes(choice.order)) throw Error('Unknown order');
+        if (!allowed.includes(choice.order)) throw Error('Unknown order');
         if (!disposed) {
           mayorMode = 'Qwen';
           enact(choice.order,typeof choice.statement === 'string' ? choice.statement.slice(0,180) : '');
@@ -333,6 +357,7 @@ window.CitySim = (() => {
 
     function tick() {
       minute++;
+      incidentSystem.tick();
       residents.forEach(residentTick);
       if (minute === 540) record('The morning rush is underway. I’m checking who made it to work.',
         'Reviewed commute', 'Applied', residents.filter(p => p.activity === 'work').length+' residents have arrived.');
@@ -376,7 +401,7 @@ window.CitySim = (() => {
       const agents = [];
       const rush=(minute>=390&&minute<=570)||(minute>=990&&minute<=1170);
       const highway=CityPlan.plan.roads.find(r=>r.fixed);
-      if(rush&&highway){
+      if(rush&&highway&&config.throughTraffic===true){
         const now=minute+elapsed,through=[];
         for(let i=0;i<20;i++){
           const firstSpawn=(minute<900?390:990)+i*.4;
@@ -416,24 +441,26 @@ window.CitySim = (() => {
         }
       }
       if (service) agents.push({...position(service.path,(minute+elapsed-service.start)/Math.max(5,service.path.length/440)),kind:'ambulance',id:-1});
+      const incidentState=incidentSystem.state(minute+elapsed);
+      agents.push(...incidentState.responders);
       const n = residents.length;
       const workRate = minute < 540 ? 1 : residents.filter(p => p.jobsDone).length / Math.max(1,n);
       const avgTravel = residents.reduce((sum,p) => sum+p.routeMinutes,0)/Math.max(n,1);
       const satisfaction = n ? round(clamp(70+12*workRate + Math.min(6,leisure.length*2)
-        - Math.min(24,avgTravel/7) - 7*refuseCount + 4*relief - (hallProtected?0:8),0,100)) : 0;
+        - Math.min(24,avgTravel/7) - 7*refuseCount + 4*relief - (hallProtected?0:8)-incidentSystem.active().reduce((sum,i)=>sum+i.severity/12,0),0,100)) : 0;
       const count = type => residents.filter(p => p.activity === type).length;
       return {minute, finished:ended, agents,population:n, satisfaction, hallProtected, districts,
         authority:round(districts.reduce((sum,d) => sum+d.authority,0)/Math.max(1,districts.length)),
-        events,mayorMode,pending,throughTraffic:agents.filter(a=>String(a.id).startsWith('through-')).length,workersArrived:residents.filter(p=>p.jobsDone).length,commuting:count('commuting'),socializing:count('social'),atHome:count('home'),atWork:count('work'),stranded:count('stranded')};
+        ...incidentState,events,mayorMode,pending,sheltered:count('sheltered'),throughTraffic:agents.filter(a=>String(a.id).startsWith('through-')).length,workersArrived:residents.filter(p=>p.jobsDone).length,commuting:count('commuting'),socializing:count('social'),atHome:count('home')+count('sheltered'),atWork:count('work'),stranded:count('stranded')};
     }
-    return {getState,refreshNetwork,step(minutes) {
+    return {getState,refreshNetwork,triggerIncident:(kind,p)=>incidentSystem.spawn(kind,p),requestResponse:id=>incidentSystem.request(id),setAutoIncidents:value=>incidentSystem.automatic(value),step(minutes) {
       if (Number.isFinite(minutes) && minutes > 0 && !disposed && !ended && !pending) {
         elapsed = Math.min(CLOSE-minute, elapsed+minutes);
         while (elapsed >= 1 && !ended && !pending) { elapsed--; tick(); }
         if (pending) elapsed = 0;
       }
       return getState();
-    },dispose() {disposed=true; controller?.abort();}};
+    },dispose() {disposed=true; controller?.abort();CityPlan.setClosures([]);}};
   }
   return {start,travelTimeline,timedPosition};
 })();

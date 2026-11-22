@@ -22,11 +22,12 @@
     scene.add(sun);
     const geometries={box:new T.BoxGeometry(1,1,1), round:new T.CylinderGeometry(1,1,1,12), roof:new T.ConeGeometry(1,1,4), pine:new T.ConeGeometry(1,1,7), crown:new T.IcosahedronGeometry(1,0), dome:new T.SphereGeometry(1,10,4,0,Math.PI*2,0,Math.PI/2)};
     const material=new T.MeshStandardMaterial({roughness:1,flatShading:true});
-    let pending=[], origin=null, yaw=0, modelScale=1;
+    let pending=[],origin=null,yaw=0,modelScale=1,latestIncidents=[],damageById={},lastDamageKey='';
     function part(shape,x,y,z,w,h,d,color,yaw=0) {
       const object=new T.Object3D();
       if(origin){const dx=(x-origin.x)*modelScale,dz=(z-origin.z)*modelScale;x=origin.x+dx*Math.cos(origin.rotation||0)+dz*Math.sin(origin.rotation||0);z=origin.z-dx*Math.sin(origin.rotation||0)+dz*Math.cos(origin.rotation||0);y=.8+(y-.8)*modelScale;w*=modelScale;h*=modelScale;d*=modelScale;yaw+=origin.rotation||0;}
       object.position.set(x,y,z);object.rotation.y=yaw;object.scale.set(w,h,d);object.updateMatrix();
+      if(origin?.damage)color=new T.Color(color).lerp(new T.Color(0x574741),Math.min(.8,origin.damage/125)).getHex();
       pending.push({shape,matrix:object.matrix,color});
     }
     const box=(x,y,z,w,h,d,c,r=0)=>part("box",x,y,z,w,h,d,c,r);
@@ -138,7 +139,7 @@
     let previewLine=null;
     const labelsLayer=document.createElement('div');labelsLayer.className='maplabels';container.append(labelsLayer);
     let labels=[];
-    function refreshLabels(){labelsLayer.replaceChildren();labels=[...CityPlan.landmarks,...CityPlan.plan.buildings.filter(b=>b.area),...CityPlan.plan.roads.filter(r=>(r.bridge||r.tunnel)&&(!r.pathId||r.pathStart===0)).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,35,l.z)};});}
+    function refreshLabels(){labelsLayer.replaceChildren();labels=[...latestIncidents.filter(i=>!['resolved','averted'].includes(i.status)).map(i=>({name:i.label.toUpperCase()+' · '+i.response,x:i.x,z:i.z,incident:true})),...CityPlan.landmarks,...CityPlan.highwayGates(),...CityPlan.highwayRamps(),...CityPlan.servicePoints(),...CityPlan.plan.buildings.filter(b=>b.area),...CityPlan.plan.roads.filter(r=>(r.bridge||r.tunnel)&&(!r.pathId||r.pathStart===0)).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';if(l.incident)el.className='incidentLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,l.height??35,l.z)};});}
     refreshLabels();
     let fog=null;
     function drawFog(){
@@ -165,7 +166,7 @@
       return mesh;
     }
     function markingBlocked(road,p){
-      return CityPlan.plan.roads.some(other=>other!==road&&!(road.pathId&&other.pathId===road.pathId)&&Math.abs(CityPlan.heightAt(p,road)-CityPlan.heightAt(p,other))<.75&&CityPlan.dist(p,CityPlan.projection(p,other.a,other.b))<CityPlan.widths[other.type]/2+.65);
+      return CityPlan.plan.roads.some(other=>other!==road&&!(road.pathId&&other.pathId===road.pathId)&&Math.abs(CityPlan.heightAt(p,road)-CityPlan.heightAt(p,other))<.75&&CityPlan.dist(p,CityPlan.projection(p,other.a,other.b))<CityPlan.roadWidth(other)/2+.65);
     }
     function drawControls(time){
       const key=CityPlan.revision+'|'+CityPlan.plan.controls.map(c=>c.kind==='signal'?CityPlan.signalState(c,time,true):c.kind).join('|');
@@ -209,7 +210,7 @@
       disposeGroup(roadsGroup);const bridgeSurfaces=[];
       for(const r of CityPlan.plan.roads){
         const length=CityPlan.dist(r.a,r.b),x=(r.a.x+r.b.x)/2,z=(r.a.z+r.b.z)/2;
-        const angle=-Math.atan2(r.b.z-r.a.z,r.b.x-r.a.x),w=CityPlan.widths[r.type];
+        const angle=-Math.atan2(r.b.z-r.a.z,r.b.x-r.a.x),w=CityPlan.roadWidth(r);
         if(r.bridge){
           bridgeSurfaces.push(bridgeRibbon(r,w+2.4,-.1,shoulderMaterial),bridgeRibbon(r,w,.58,asphaltMaterial));
           const n=Math.ceil(length/5);
@@ -229,7 +230,7 @@
             const p={x:r.a.x+(r.b.x-r.a.x)*t/length,z:r.a.z+(r.b.z-r.a.z)*t/length};
             box(p.x,1.05,p.z,6,.08,w*.62,0x577e86,angle);
           }
-          for(const [end,other] of [[r.a,r.b],[r.b,r.a]].filter((pair,i)=>!r.pathId||(i===0?r.pathStart===0:Math.abs(r.pathEnd-r.pathLength)<.01))){
+          for(const [end,other] of [[r.a,r.b],[r.b,r.a]].filter((pair,i)=>Math.abs(CityPlan.heightAt(pair[0],r))<.75&&(!r.pathId||r.fixed||(i===0?r.pathStart===0:Math.abs(r.pathEnd-r.pathLength)<.01)))){
             const dx=(other.x-end.x)/length,dz=(other.z-end.z)/length;
             box(end.x+dx*5,.85,end.z+dz*5,10,.2,w,0x24393d,angle);
             box(end.x,4,end.z,3,1.5,w+3,0xb8b8a4,angle);
@@ -246,9 +247,10 @@
           }
         };
         line(-w/2+.35,0xe7dfb8,false);line(w/2-.35,0xe7dfb8,false);
-        if(r.type==='highway'){line(0,0xd4b957,false);line(-w/4,0xd9dfda,true);line(w/4,0xd9dfda,true);}
+        if(r.type==='highway'&&!r.oneway){line(0,0xd4b957,false);line(-w/4,0xd9dfda,true);line(w/4,0xd9dfda,true);}
         else if(r.type==='twoway')line(0,0xe0ce9b,true);
-        else {
+        else if(r.type==='highway')line(0,0xd9dfda,true);
+        if(r.type==='oneway'||r.oneway){
           for(let t=((10-(r.pathStart||0))%24+24)%24;t<length-1;t+=24){
             const x=r.a.x+(r.b.x-r.a.x)*t/length,z=r.a.z+(r.b.z-r.a.z)*t/length;
             if(markingBlocked(r,{x,z}))continue;
@@ -257,10 +259,10 @@
           }
         }
       }
-      for(const building of CityPlan.plan.buildings){
-        const connection=CityPlan.access(building),s=CityPlan.buildingScale(building.type),angle=building.rotation||0;
+      for(const building of [...CityPlan.plan.buildings,...CityPlan.landmarks.filter(l=>['hall','hospital'].includes(l.site))]){
+        const connection=CityPlan.access(building),s=building.scale||CityPlan.buildingScale(building.type),angle=building.rotation||0;
         const entrance={x:building.x+Math.sin(angle)*(building.radius||s*2.5),z:building.z+Math.cos(angle)*(building.radius||s*2.5)};
-        box(entrance.x,1.1,entrance.z,8,.5,8,connection?0xf5d176:0xe98649,angle);
+        box(entrance.x,1.1,entrance.z,8,.5,8,(connection||building.site)?0xf5d176:0xe98649,angle);
         if(connection){
           const p=connection.p,length=connection.length,rotation=-Math.atan2(p.z-entrance.z,p.x-entrance.x);
           const n=Math.max(1,Math.ceil(length/3)),endHeight=CityPlan.heightAt(p,connection.road);
@@ -269,6 +271,7 @@
           part('pine',building.x,12,building.z,2,3,2,0xe98649);
         }
       }
+      for(const ramp of CityPlan.highwayRamps())part('round',ramp.x,1.2,ramp.z,4,.6,4,ramp.flow==='on'?0x90cfb6:0xf1d57a);
       roadsGroup=flush();if(bridgeSurfaces.length)roadsGroup.add(...bridgeSurfaces);
       const shoulder=flatSurface(CityPlan.roadSurfaces(1.2),.4,shoulderMaterial);
       const asphalt=flatSurface(CityPlan.roadSurfaces(),.58,asphaltMaterial);
@@ -350,19 +353,69 @@
       document.getElementById('scaleValue').textContent='100 m';
       document.getElementById('scaleBar').style.width=(100*CityPlan.scale/(half*2*w/h)*w)+'px';
     }
+    let incidentGroup=null,incidentEffectKey='',incidentLabelKey='';
+    const waterMaterial=new T.MeshBasicMaterial({color:0x438fb8,transparent:true,opacity:.55,side:T.DoubleSide});
+    function drawIncidents(state){
+      const active=(state.incidents||[]).filter(i=>!['resolved','averted'].includes(i.status));
+      const labelKey=active.map(i=>i.id+i.status+i.response).join('|');
+      if(labelKey!==incidentLabelKey){latestIncidents=active;incidentLabelKey=labelKey;refreshLabels();}
+      const key=CityPlan.revision+'|'+Math.floor((state.minute||0)*3)+'|'+labelKey;
+      if(key===incidentEffectKey)return;
+      incidentEffectKey=key;disposeGroup(incidentGroup);
+      const water=[];
+      for(const incident of active){
+        const {x,z,radius,kind}=incident;
+        if(kind==='flood'&&incident.status==='active'){
+          const geometry=new T.CircleGeometry(radius,48);geometry.rotateX(-Math.PI/2);
+          const mesh=new T.Mesh(geometry,waterMaterial);mesh.position.set(x,1.1,z);mesh.userData.ownedGeometry=true;water.push(mesh);
+          for(let i=0;i<10;i++)box(x+Math.cos(i*2.3)*radius*.6,1.35,z+Math.sin(i*2.3)*radius*.6,12,.1,.7,0xa3d9e1,i);
+        }else if(kind==='storm'&&incident.status==='active'){
+          for(let i=0;i<36;i++){
+            const angle=i*2.4,spread=radius*Math.sqrt((i+.5)/36),height=8+((i*3+(state.minute||0)*20)%20);
+            box(x+Math.cos(angle)*spread,height,z+Math.sin(angle)*spread,.25,6,.25,0xc6d9d8,.3);
+          }
+          for(let i=0;i<4;i++)part('crown',x+Math.cos(i*2)*radius*.5,30,z+Math.sin(i*2)*radius*.5,23,7,15,0x708589);
+        }else if(kind==='earthquake'){
+          for(let i=0;i<16;i++){
+            const angle=i*2.2,spread=radius*Math.sqrt((i+.5)/16);
+            box(x+Math.cos(angle)*spread,1,z+Math.sin(angle)*spread,14,.4,1.6,0x685e4d,angle);
+            part('crown',x+Math.cos(angle)*spread,2,z+Math.sin(angle)*spread,2.5,2,3,0x8a7b67);
+          }
+        }else if(kind==='fire'){
+          for(let i=0;i<9;i++){
+            const angle=i*2.4,spread=12*Math.sqrt((i+.5)/9),height=8+Math.sin(i+(state.minute||0)*3)*2;
+            part('pine',x+Math.cos(angle)*spread,height/2,z+Math.sin(angle)*spread,3,height,3,i%2?0xffad47:0xea6544);
+            part('crown',x+Math.cos(angle)*spread,20+i*2,z+Math.sin(angle)*spread,5,6,5,0x7c7b70);
+          }
+        }else if(kind==='protest'){
+          for(let i=0;i<26;i++){
+            const angle=i*2.4,spread=18*Math.sqrt((i+.5)/26),px=x+Math.cos(angle)*spread,pz=z+Math.sin(angle)*spread;
+            box(px,1.8,pz,.8,2,.8,[0x7d607c,0x527787,0xb46f53][i%3]);
+            part('crown',px,3.3,pz,.5,.5,.5,0xd8b28a);
+            if(i%3===0){box(px,4,pz,.2,3,.2,0x847352);box(px,5.4,pz,3.6,2,.25,0xf1dfaf,i);}
+          }
+        }
+      }
+      for(const road of CityPlan.plan.roads.filter(r=>CityPlan.roadBlocked(r)&&!r.tunnel)){
+        const x=(road.a.x+road.b.x)/2,z=(road.a.z+road.b.z)/2,length=CityPlan.dist(road.a,road.b),angle=-Math.atan2(road.b.z-road.a.z,road.b.x-road.a.x);
+        box(x,CityPlan.heightAt({x,z},road)+1,z,length,.2,CityPlan.roadWidth(road),0xb85a43,angle);
+      }
+      incidentGroup=flush();for(const mesh of water)incidentGroup.add(mesh);
+    }
     function update(lotMap={},agents=[],state={}) {
       renderer.domElement.style.cursor=getTool().pan?'grab':'crosshair';
-      if(lastRevision!==CityPlan.revision){
+      const damageKey=JSON.stringify(state.damage||{});damageById=state.damage||{};
+      if(lastRevision!==CityPlan.revision||damageKey!==lastDamageKey){
         disposeGroup(buildingMesh);refreshLabels();drawFog();
         for(const c of CityPlan.plan.buildings){
           if(c.area){
             part('round',c.x,.2,c.z,59,.35,54,0xafbf92);
             for(const [dx,dz] of [[-31,-26],[26,-31],[-24,27],[31,22]]){
-              const site={x:c.x+dx,z:c.z+dz,rotation:c.rotation};origin=site;modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,site);origin=null;modelScale=1;
+              const site={x:c.x+dx,z:c.z+dz,rotation:c.rotation,damage:damageById[c.id]||0};origin=site;modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,site);origin=null;modelScale=1;
             }
-          }else{origin=c;modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,c);origin=null;modelScale=1;}
+          }else{origin={...c,damage:damageById[c.id]||0};modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,c);origin=null;modelScale=1;}
         }
-        buildingMesh=flush();drawRoads();lastRevision=CityPlan.revision;
+        buildingMesh=flush();drawRoads();lastRevision=CityPlan.revision;lastDamageKey=damageKey;
       }
       if(agents.length!==agentCount){
         for(const mesh of [people,roofs,wheels])if(mesh){scene.remove(mesh);mesh.dispose();}
@@ -381,7 +434,7 @@
           const body=new T.Object3D();body.position.set(a.x,ground+(person?1.5:1.25),a.z);body.rotation.set(a.pitch||0,heading,0,'YXZ');
           body.scale.set((person?.65:2.1)*visible,(person?1.45:.9)*visible,(person?.65:4.4)*visible);body.updateMatrix();people.setMatrixAt(i,body.matrix);
           const palette=[0xd87451,0xe7c16d,0x729eaa,0xb7c9ad];
-          people.setColorAt(i,new T.Color(a.kind==='ambulance'?0xf5eaca:person?0x634b71:palette[(typeof a.id==='number'?a.id:parseInt(String(a.id).split('-').at(-1),10)||0)%palette.length]));
+          people.setColorAt(i,new T.Color(a.kind==='ambulance'?0xf5eaca:a.kind==='firetruck'?0xd55741:a.kind==='police'?0x456b9b:a.kind==='repair'?0xe2b64e:a.kind==='bus'?0xe49a57:person?0x634b71:palette[(typeof a.id==='number'?a.id:parseInt(String(a.id).split('-').at(-1),10)||0)%palette.length]));
           const roof=new T.Object3D();roof.position.set(a.x,ground+(person?2.45:2),a.z);roof.rotation.set(a.pitch||0,heading,0,'YXZ');
           roof.scale.set((person?.55:1.65)*visible,(person?.55:.65)*visible,(person?.55:2.25)*visible);roof.updateMatrix();roofs.setMatrixAt(i,roof.matrix);
           roofs.setColorAt(i,new T.Color(person?0xdbac85:0x344f58));
@@ -394,8 +447,15 @@
         });
         for(const mesh of [people,roofs,wheels]){mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;}
       }
-      drawControls(state.minute||360);
+      drawControls(state.minute||360);drawIncidents(state);
       guard.material.color.set(state.hallProtected===false?0xe17461:0xf0d275);render();
+    }
+    const incidentCursor=new T.Mesh(new T.CircleGeometry(1,48),new T.MeshBasicMaterial({color:0xda7658,transparent:true,opacity:.28,side:T.DoubleSide,depthWrite:false}));
+    incidentCursor.rotation.x=-Math.PI/2;incidentCursor.visible=false;scene.add(incidentCursor);
+    function incidentPreview(p,kind){
+      ghost(null);const spec=CityIncidents.types[kind];
+      incidentCursor.visible=!!spec;if(spec){incidentCursor.position.set(p.x,2,p.z);incidentCursor.scale.set(spec.radius,spec.radius,1);incidentCursor.material.color.set(kind==='flood'?0x4a9fc0:kind==='protest'?0xe4bc67:0xd96d51);}
+      render();
     }
     let roadDraft=null;
     function clearRoadPreview(){if(roadDraft){scene.remove(roadDraft);roadDraft.geometry.dispose();roadDraft.material.dispose();roadDraft=null;}}
@@ -421,7 +481,7 @@
     }
     function snapTolerance(){return Math.max(4,Math.min(30,(camera.right-camera.left)/Math.max(1,container.clientWidth)*10));}
     function ghost(p,type,rotation=0,start=null,bridge=false,tunnel=false) {
-      clearRoadPreview();
+      clearRoadPreview();incidentCursor.visible=false;
       preview.visible=!!p;frontArrow.visible=!!p&&!CityPlan.widths[type];if(!p){if(previewLine){scene.remove(previewLine);previewLine.geometry.dispose();previewLine=null;}render();return;}
       if(CityPlan.controlTypes[type]){
         const placement=CityPlan.controlPlacement(p,type);preview.visible=!!placement;frontArrow.visible=!!placement?.approach;
@@ -459,7 +519,7 @@
     }
     requestAnimationFrame(cameraLoop);
     new ResizeObserver(resize).observe(container);resize();
-    return {update,ghost,roadPreview,snapTolerance,zoom(delta){scale=Math.max(.7,Math.min(22,scale*(delta>0?1.4:1/1.4)));resize();},resetView(){scale=1;azimuth=0;elevationAngle=Math.PI/2-.001;tilt=false;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},focusLevel(){scale=1;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},toggleView(){tilt=!tilt;elevationAngle=tilt?Math.PI*.32:Math.PI/2-.001;resize();}};
+    return {update,ghost,incidentPreview,roadPreview,snapTolerance,zoom(delta){scale=Math.max(.7,Math.min(22,scale*(delta>0?1.4:1/1.4)));resize();},resetView(){scale=1;azimuth=0;elevationAngle=Math.PI/2-.001;tilt=false;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},focusLevel(){scale=1;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},toggleView(){tilt=!tilt;elevationAngle=tilt?Math.PI*.32:Math.PI/2-.001;resize();}};
   }
   window.CityWorld={mount};
 })();
