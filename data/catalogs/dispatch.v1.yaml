@@ -1,0 +1,17 @@
+# Incident kinds and the units standing 911 dispatch sends to each (docs/contract.md §5).
+# Disruptions reuse these needs for the incident they spawn (data/catalogs/disruptions.v1.yaml).
+# Severities are defaults; the game reports the live severity of each incident.
+id: dispatch
+version: 1
+schema_version: 1
+title: Incident kinds and standing dispatch needs
+kinds:
+  - {kind: traffic,     label: Traffic incident,  severity: 40, needs: {police: 1, medical: 1}}
+  - {kind: outage,      label: Power outage,      severity: 35, needs: {police: 1}}
+  - {kind: gas_leakage, label: Gas leak,          severity: 60, needs: {fire: 1, police: 1}}
+  - {kind: flood,       label: Flood,             severity: 65, needs: {fire: 1, medical: 1}}
+  - {kind: storm,       label: Storm damage,      severity: 55, needs: {medical: 1}}
+  - {kind: snowstorm,   label: Snowstorm,         severity: 50, needs: {medical: 1, police: 1}}
+  - {kind: heavy_rain,  label: Heavy rain,        severity: 35, needs: {police: 1}}
+  - {kind: protest,     label: Protest,           severity: 50, needs: {police: 2}}
+  - {kind: crime,       label: Resident crime,    severity: 30, needs: {police: 1}}

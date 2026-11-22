@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from aiautonomy.engines.api.brain import router as brain_router
+from aiautonomy.engines.api.catalogs import router as catalogs_router
 from aiautonomy.engines.api.errors import install_error_handlers
 from aiautonomy.engines.api.maps import router as maps_router
 from aiautonomy.engines.api.protocol import HealthResponse
@@ -71,6 +72,7 @@ def create_app(options: SessionOptions, *, serve_frontend: bool = True) -> FastA
             log.warning("relabelled %d stale run(s) as interrupted", len(relabelled))
         session = EngineSession(options)
         app.state.session = session
+        app.state.root = options.root or repo_root()
         app.state.maps = build_map_store(options)
         app.state.runs = RunStore(
             app.state.maps,
@@ -103,6 +105,7 @@ def create_app(options: SessionOptions, *, serve_frontend: bool = True) -> FastA
     app.include_router(brain_router)
     app.include_router(maps_router)
     app.include_router(runs_router)
+    app.include_router(catalogs_router)
 
     @app.get("/api/health")
     async def health() -> HealthResponse:

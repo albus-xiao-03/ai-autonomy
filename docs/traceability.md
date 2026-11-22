@@ -5,13 +5,13 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 
 | Requirements | Covered | Implementation only | Tests only | Missing |
 |---:|---:|---:|---:|---:|
-| 108 | 19 | 17 | 1 | 71 |
+| 108 | 22 | 16 | 1 | 69 |
 
 | ID | Title | Implementation | Tests | Status |
 |---|---|---|---|---|
 | RULE-01 | Engine authority | — | — | missing |
 | RULE-02 | Automatic execution | — | — | missing |
-| RULE-03 | Physical and temporal constraints | — | — | missing |
+| RULE-03 | Physical and temporal constraints | `aiautonomy/engines/hybrid/dispatch.py` | — | implementation only |
 | RULE-04 | Independent availability and authority | — | — | missing |
 | RULE-05 | Observable consequences | — | — | missing |
 | CITY-01 | Canonical map | `aiautonomy/engines/api/maps.py`<br>`aiautonomy/engines/contract/maps.py`<br>`aiautonomy/engines/world/map_store.py`<br>`aiautonomy/engines/world/maps.py` | `tests/engines/integration/test_maps_api.py::test_list_reopen_save_and_revise`<br>`tests/engines/unit/test_maps.py::test_shipped_maps_are_valid_and_pinned` | covered |
@@ -22,7 +22,7 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | SIM-01 | Fixed ticks | `aiautonomy/engines/cli.py`<br>`aiautonomy/engines/sim/clock.py`<br>`aiautonomy/engines/sim/config.py`<br>`aiautonomy/engines/sim/driver.py`<br>`aiautonomy/engines/sim/run.py`<br>`aiautonomy/engines/sim/status.py`<br>`aiautonomy/engines/world/boston.py` | `tests/engines/integration/test_driver.py::test_1x_paces_five_ticks_per_second`<br>`tests/engines/integration/test_driver.py::test_pause_holds_at_a_boundary_and_resume_continues`<br>`tests/engines/integration/test_driver.py::test_set_speed_applies_from_the_next_tick`<br>`tests/engines/integration/test_driver.py::test_step_advances_exactly_one_tick`<br>`tests/engines/integration/test_websocket.py::test_configure_creates_a_fresh_idle_run`<br>`tests/engines/unit/test_cli_and_architecture.py::test_headless_run_accepts_seed_and_duration`<br>`tests/engines/unit/test_config.py::test_engine_defaults_match_sim_01`<br>`tests/engines/unit/test_config.py::test_layering_scenario_then_overrides_then_frozen`<br>(+3 more) | covered |
 | SIM-02 | Update order | `aiautonomy/engines/hybrid/__init__.py`<br>`aiautonomy/engines/hybrid/run.py`<br>`aiautonomy/engines/sim/phases.py`<br>`aiautonomy/engines/sim/run.py` | `tests/engines/unit/test_sim_pipeline.py::test_removal_in_phase_3_skips_to_publish`<br>`tests/engines/unit/test_sim_pipeline.py::test_the_eight_phases_run_in_the_documented_order` | covered |
 | SIM-03 | Inference boundaries | `aiautonomy/engines/api/runs.py`<br>`aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/contract/decisions.py`<br>`aiautonomy/engines/contract/runs.py`<br>`aiautonomy/engines/hybrid/__init__.py`<br>`aiautonomy/engines/hybrid/run.py`<br>`aiautonomy/engines/sim/driver.py`<br>`aiautonomy/engines/world/boston.py` | `tests/engines/integration/test_driver.py::test_cancel_during_an_inference_wait_is_immediate_and_rolls_back`<br>`tests/engines/integration/test_driver.py::test_pause_during_an_inference_wait_applies_after_that_tick`<br>`tests/engines/integration/test_hybrid_runs.py::test_ticks_advance_until_the_duration_then_the_run_ends`<br>`tests/engines/integration/test_websocket.py::test_acks_are_immediate_during_an_artificial_inference_wait` | covered |
-| SIM-04 | Reproducibility | `aiautonomy/engines/cli.py`<br>`aiautonomy/engines/core/canonical.py`<br>`aiautonomy/engines/core/datafiles.py`<br>`aiautonomy/engines/core/ids.py`<br>`aiautonomy/engines/core/money.py`<br>`aiautonomy/engines/core/rng.py`<br>`aiautonomy/engines/core/version.py`<br>`aiautonomy/engines/hybrid/run.py`<br>(+8 more) | `tests/engines/integration/test_hybrid_runs.py::test_runs_are_isolated_and_reset_starts_a_new_epoch`<br>`tests/engines/integration/test_recorder.py::test_a_completed_run_writes_every_record`<br>`tests/engines/integration/test_recorder.py::test_the_manifest_pins_versions_seeds_and_config`<br>`tests/engines/property/test_determinism_properties.py`<br>`tests/engines/scenarios/test_toy_replay.py`<br>`tests/engines/unit/test_config.py::test_data_files_are_validated_and_fingerprinted`<br>`tests/engines/unit/test_config.py::test_every_shipped_data_file_has_id_version_and_schema_version`<br>`tests/engines/unit/test_config.py::test_layering_scenario_then_overrides_then_frozen`<br>(+6 more) | covered |
+| SIM-04 | Reproducibility | `aiautonomy/engines/cli.py`<br>`aiautonomy/engines/core/canonical.py`<br>`aiautonomy/engines/core/datafiles.py`<br>`aiautonomy/engines/core/ids.py`<br>`aiautonomy/engines/core/money.py`<br>`aiautonomy/engines/core/rng.py`<br>`aiautonomy/engines/core/version.py`<br>`aiautonomy/engines/hybrid/run.py`<br>(+8 more) | `tests/engines/integration/test_hybrid_runs.py::test_runs_are_isolated_and_reset_starts_a_new_epoch`<br>`tests/engines/integration/test_recorder.py::test_a_completed_run_writes_every_record`<br>`tests/engines/integration/test_recorder.py::test_the_manifest_pins_versions_seeds_and_config`<br>`tests/engines/property/test_determinism_properties.py`<br>`tests/engines/property/test_dispatch_properties.py::test_dispatch_invariants_and_determinism`<br>`tests/engines/scenarios/test_toy_replay.py`<br>`tests/engines/unit/test_config.py::test_data_files_are_validated_and_fingerprinted`<br>`tests/engines/unit/test_config.py::test_every_shipped_data_file_has_id_version_and_schema_version`<br>(+7 more) | covered |
 | SIM-05 | Reset isolation | `aiautonomy/engines/api/runs.py`<br>`aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/contract/decisions.py`<br>`aiautonomy/engines/contract/runs.py`<br>`aiautonomy/engines/hybrid/__init__.py`<br>`aiautonomy/engines/hybrid/run.py`<br>`aiautonomy/engines/hybrid/store.py`<br>`aiautonomy/engines/sim/driver.py` | `tests/engines/integration/test_driver.py::test_abandon_during_a_wait_interrupts_a_started_run`<br>`tests/engines/integration/test_hybrid_runs.py::test_retries_are_idempotent_and_conflicts_are_refused`<br>`tests/engines/integration/test_hybrid_runs.py::test_runs_are_isolated_and_reset_starts_a_new_epoch`<br>`tests/engines/integration/test_websocket.py::test_acks_are_immediate_during_an_artificial_inference_wait`<br>`tests/engines/integration/test_websocket.py::test_configure_creates_a_fresh_idle_run`<br>`tests/engines/unit/test_ollama_cancel.py::test_caller_cancelled_while_waiting_for_the_lock_never_reaches_ollama`<br>`tests/engines/unit/test_ollama_cancel.py::test_reset_mid_chat_keeps_the_lock_until_the_call_returns`<br>`tests/engines/unit/test_ollama_cancel.py::test_reset_mid_unload_keeps_the_lock_and_skips_the_chat` | covered |
 | RES-01 | Resident state | — | — | missing |
 | RES-02 | Routine residents | — | — | missing |
@@ -37,17 +37,17 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | LOCAL-04 | Scheduling | — | — | missing |
 | LOCAL-05 | Coverage reporting | — | — | missing |
 | LOCAL-06 | Routing isolation | — | — | missing |
-| SRV-01 | Finite resources | `aiautonomy/engines/contract/dispatch.py`<br>`aiautonomy/engines/hybrid/state.py` | — | implementation only |
-| SRV-02 | Traffic | — | — | missing |
+| SRV-01 | Finite resources | `aiautonomy/engines/contract/dispatch.py`<br>`aiautonomy/engines/hybrid/catalogs.py`<br>`aiautonomy/engines/hybrid/dispatch.py`<br>`aiautonomy/engines/hybrid/state.py` | `tests/engines/integration/test_dispatch.py::test_exhausted_units_queue_with_a_reason_until_one_is_released`<br>`tests/engines/integration/test_dispatch.py::test_routine_dispatch_sends_the_nearest_qualified_units`<br>`tests/engines/property/test_dispatch_properties.py::test_dispatch_invariants_and_determinism` | covered |
+| SRV-02 | Traffic | `aiautonomy/engines/hybrid/dispatch.py` | `tests/engines/integration/test_dispatch.py::test_unreachable_missing_and_out_of_service_demand_reasons` | covered |
 | SRV-03 | Fire | — | — | missing |
 | SRV-04 | EMS | — | — | missing |
 | SRV-05 | Hospitals | — | — | missing |
 | SRV-06 | Police | — | — | missing |
-| SRV-07 | Standing operations | `aiautonomy/engines/contract/dispatch.py` | — | implementation only |
+| SRV-07 | Standing operations | `aiautonomy/engines/api/catalogs.py`<br>`aiautonomy/engines/contract/dispatch.py`<br>`aiautonomy/engines/hybrid/catalogs.py`<br>`aiautonomy/engines/hybrid/dispatch.py` | `tests/engines/integration/test_dispatch.py::test_exhausted_units_queue_with_a_reason_until_one_is_released`<br>`tests/engines/integration/test_dispatch.py::test_routine_dispatch_sends_the_nearest_qualified_units`<br>`tests/engines/integration/test_dispatch.py::test_severity_then_age_then_id_decide_who_waits`<br>`tests/engines/integration/test_dispatch.py::test_shortest_reported_travel_time_wins`<br>`tests/engines/integration/test_dispatch.py::test_unit_events_must_follow_assignments`<br>`tests/engines/integration/test_dispatch.py::test_unreachable_missing_and_out_of_service_demand_reasons`<br>`tests/engines/property/test_dispatch_properties.py::test_dispatch_invariants_and_determinism` | covered |
 | MAY-01 | Decision pipeline | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
 | MAY-02 | Observations | — | — | missing |
 | MAY-03 | Supported actions | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
-| MAY-04 | Action definitions | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
+| MAY-04 | Action definitions | `aiautonomy/engines/contract/decisions.py`<br>`aiautonomy/engines/hybrid/catalogs.py` | — | implementation only |
 | MAY-05 | Validation | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
 | MAY-06 | Explanation | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
 | MAY-07 | Backend configuration | — | — | missing |
@@ -68,7 +68,7 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | HOST-07 | Recovery | — | — | missing |
 | HOST-08 | Resident independence | — | — | missing |
 | EVT-01 | Required event families | `aiautonomy/engines/contract/disruptions.py` | `tests/engines/unit/test_contract.py::test_exactly_seven_disruption_types` | covered |
-| EVT-02 | Event definition | `aiautonomy/engines/contract/disruptions.py` | — | implementation only |
+| EVT-02 | Event definition | `aiautonomy/engines/api/catalogs.py`<br>`aiautonomy/engines/contract/disruptions.py` | — | implementation only |
 | EVT-03 | Physical and economic consequences | — | — | missing |
 | EVT-04 | Positive-event tradeoffs | — | — | missing |
 | EVT-05 | Lasting consequences | — | — | missing |

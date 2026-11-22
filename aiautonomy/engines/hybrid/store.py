@@ -14,6 +14,7 @@ from pathlib import Path
 
 from aiautonomy.engines.contract.runs import RunLaunchRequest
 from aiautonomy.engines.core.datafiles import DataFileError, DataFileRef
+from aiautonomy.engines.hybrid.catalogs import load_catalogs
 from aiautonomy.engines.hybrid.run import HybridRun, HybridSink, RunError, RunSetup
 from aiautonomy.engines.mayor.backends import api_available
 from aiautonomy.engines.sim.config import RunOverrides, resolve_run_config
@@ -83,11 +84,16 @@ class RunStore:
             path=CANONICAL_CATALOG.as_posix(),
             sha256=catalog.sha256,
         )
+        try:
+            catalogs = load_catalogs(self.root)
+        except (DataFileError, ValueError) as exc:
+            raise RunError(422, "invalid_catalog", str(exc)) from exc
         return RunSetup(
             request=request,
             config=resolved.config,
-            data_files=(*resolved.data_files, canonical_ref, map_ref),
+            data_files=(*resolved.data_files, canonical_ref, *catalogs.refs, map_ref),
             map_revision=revision,
+            catalogs=catalogs,
         )
 
     def launch(self, request: RunLaunchRequest) -> HybridRun:

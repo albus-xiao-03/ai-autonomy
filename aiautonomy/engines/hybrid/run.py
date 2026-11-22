@@ -52,7 +52,8 @@ from aiautonomy.engines.core.canonical import StateHash, canonical_json, hash_st
 from aiautonomy.engines.core.datafiles import DataFileRef
 from aiautonomy.engines.core.money import apply_bp
 from aiautonomy.engines.core.rng import KeyedRng, derive_stream_seeds
-from aiautonomy.engines.hybrid import residents
+from aiautonomy.engines.hybrid import dispatch, residents
+from aiautonomy.engines.hybrid.catalogs import Catalogs
 from aiautonomy.engines.hybrid.state import HybridState, Incident
 from aiautonomy.engines.sim.config import RunConfig
 from aiautonomy.engines.world.boston import BostonWorldConfig
@@ -107,6 +108,7 @@ class RunSetup:
     config: RunConfig
     data_files: tuple[DataFileRef, ...]
     map_revision: MapRevision
+    catalogs: Catalogs
 
     @property
     def world(self) -> BostonWorldConfig:
@@ -130,6 +132,7 @@ class TickParts:
     authority_changes: list[AuthorityChange] = field(default_factory=list)
     resident_modes: dict[str, bool] = field(default_factory=dict)
     warnings: list[Failure] = field(default_factory=list)
+    arrivals: list[tuple[str, str]] = field(default_factory=list)
 
 
 def observation_digest(observation: TickObservation) -> str:
@@ -394,8 +397,8 @@ class HybridRun:
         return failures
 
     def validate_unit_events(self, observation: TickObservation) -> list[Failure]:
-        """Extension point for dispatch rules on unit events (none before dispatch exists)."""
-        return []
+        """Unit events must follow the engine's assignments (dispatch rules)."""
+        return dispatch.validate_events(self.state, observation)
 
     # --- phases ------------------------------------------------------------------------
 
@@ -432,6 +435,7 @@ class HybridRun:
                 unit.state, unit.since_tick = "out_of_service", observation.tick
             elif not unit.reported_out and unit.state == "out_of_service":
                 unit.state, unit.since_tick = "available", observation.tick
+        parts.arrivals = dispatch.apply_events(state, observation, parts.releases)
 
     def phase_due_removals(self, tick: int, parts: TickParts) -> None:
         """Phase 3: removal outcomes already due (recall vote closing at this tick)."""
@@ -440,8 +444,19 @@ class HybridRun:
         """Phase 4: revalidate and apply decisions whose apply tick is this tick."""
 
     def phase_dispatch(self, observation: TickObservation, parts: TickParts) -> None:
-        """Phase 5: standing 911 dispatch, then retire resolved incidents."""
-        self.retire_resolved(observation.tick)
+        """Phase 5: release units of resolved incidents, standing 911 dispatch, retire them."""
+        tick = observation.tick
+        dispatch.release_resolved(self.state, tick, parts.releases)
+        dispatch.run_dispatch(
+            self.state,
+            self.setup.catalogs.dispatch,
+            tick,
+            dispatch.route_table(observation),
+            parts.assignments,
+            parts.queue,
+            parts.warnings,
+        )
+        self.retire_resolved(tick)
 
     def retire_resolved(self, tick: int) -> None:
         for incident_id in sorted(self.state.incidents):

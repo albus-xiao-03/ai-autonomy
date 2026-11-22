@@ -2280,8 +2280,8 @@ This appendix is the plan and resume point for the engine work requested in the 
 | C1 | Contract v1, examples, generated types | done | `1e8dd65` | `aiautonomy/engines/contract/`, `docs/contract.md`, 7 examples; 162 pytest, schema and types current |
 | C2 | Maps: template, variant, validation, locks, persistence | done | `3231ac4` | `boston-template` r1 `e368eec2…`, `boston-variant` r1 `6279e42a…`; 212 pytest; `node tests/boston-maps.cjs` (game validators, routes 853→1413 m without the shortcut) |
 | C3 | Ollama lock held until the underlying call finishes | done | `0d6212c` | 8 tests in `tests/engines/unit/test_ollama_cancel.py`, fail on the previous code |
-| C4 | Hybrid run core: config, run store, tick pipeline, records, seeded residents | done | (this commit) | 228 pytest; live `aia serve` smoke |
-| C5 | 911 dispatch | not started | — | |
+| C4 | Hybrid run core: config, run store, tick pipeline, records, seeded residents | done | `e88a6ef` | 228 pytest; live `aia serve` smoke |
+| C5 | 911 dispatch | done | (this commit) | dispatch tests + property test; no inference |
 | C6 | Seven disruptions: catalog, automatic, scheduled, injected | not started | — | |
 | C7 | Mayor decisions, exceptional orders, authority cost, legacy routes on the run store | not started | — | |
 | C8 | Politics: petition, protest, recall vote, removal | not started | — | |

@@ -174,7 +174,8 @@ class TickObservation(ContractModel):
     routes: list[RouteObservation] = Field(
         default_factory=list,
         max_length=5000,
-        description="Every (available unit, unresolved incident) pair; see docs/contract.md.",
+        description="Every (available unit, unresolved incident) pair, including units a "
+        "`cleared` event in this observation frees; see docs/contract.md §4.",
     )
     unit_events: list[UnitEvent] = Field(default_factory=list, max_length=200)
     out_of_service: list[EntityId] = Field(default_factory=list, max_length=200)

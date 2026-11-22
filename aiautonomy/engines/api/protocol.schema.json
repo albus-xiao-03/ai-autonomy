@@ -4075,7 +4075,7 @@
           "type": "array"
         },
         "routes": {
-          "description": "Every (available unit, unresolved incident) pair; see docs/contract.md.",
+          "description": "Every (available unit, unresolved incident) pair, including units a `cleared` event in this observation frees; see docs/contract.md §4.",
           "items": {
             "$ref": "#/$defs/RouteObservation"
           },

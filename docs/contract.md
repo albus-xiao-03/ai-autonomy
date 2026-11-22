@@ -140,7 +140,7 @@ After simulating tick `t`, the game posts a `TickObservation` to `POST /api/runs
 - `incidents`: every unresolved incident, plus each incident resolved during this tick with `status: "resolved"`. Report the resolved one once, then drop it. An incident that vanishes without being reported resolved is rejected (`incident_vanished`).
   - A disruption's incident uses the `incident_id` the engine gave it (`inc-…`).
   - Incidents the game creates itself (protests, crimes) use ids starting with `game-`.
-- `routes`: the travel time on the **current game road graph** for every pair of an available unit (engine view, from the previous outcome's `units`) and an unresolved incident.
+- `routes`: the travel time on the **current game road graph** for every pair of an available unit and an unresolved incident. A unit counts as available when the previous outcome's `units` lists it as available, or when a `cleared` event in this same observation frees it. A freed unit can be dispatched again in the same tick.
   - Use `reachable: false` (and `travel_ticks: null`) when no route exists.
   - A missing pair makes that unit ineligible for that incident and is listed in the outcome's `warnings` (`route_not_reported`).
 - `unit_events`: physical outcomes this tick.

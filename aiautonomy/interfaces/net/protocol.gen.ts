@@ -1178,7 +1178,7 @@ export interface TickObservation {
    */
   incidents?: IncidentObservation[];
   /**
-   * Every (available unit, unresolved incident) pair; see docs/contract.md.
+   * Every (available unit, unresolved incident) pair, including units a `cleared` event in this observation frees; see docs/contract.md §4.
    *
    * @maxItems 5000
    */
