@@ -12,21 +12,22 @@
     const saved=JSON.parse(localStorage.getItem('borough-levels-v1')||'null');
     startingLevel=Number.isInteger(saved?.level)?saved.level:1;
     CityPlan.seedArcade(startingLevel);
-    if(saved?.roads)for(const r of saved.roads)if(!r.fixed&&CityPlan.widths[r.type]&&r.a&&r.b&&!CityPlan.roadError(r.a,r.b,r.type,!!r.bridge))CityPlan.plan.roads.push(r);
+    if(saved?.roads)for(const r of saved.roads)if(!r.fixed&&CityPlan.widths[r.type]&&r.a&&r.b&&!CityPlan.roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel))CityPlan.plan.roads.push(r);
+    if(saved?.controls)for(const c of saved.controls)if(CityPlan.controlTypes[c.kind]&&CityPlan.junctions().some(j=>CityPlan.dist(c,j)<.1)&&(!c.approach||(Number.isFinite(c.approach.x)&&Number.isFinite(c.approach.z))))CityPlan.plan.controls.push(c);
     settings=localStorage.getItem('borough-mayor')||'qwen';
   }catch{CityPlan.seedArcade();}
   CityPlan.changed();
-  function save(){try{localStorage.setItem('borough-levels-v1',JSON.stringify({level:CityPlan.level,roads:CityPlan.plan.roads}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
+  function save(){try{localStorage.setItem('borough-levels-v1',JSON.stringify({level:CityPlan.level,roads:CityPlan.plan.roads,controls:CityPlan.plan.controls}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
   const world=CityWorld.mount($('world'),{
     onPoint:place,
     getTool:()=>({pan:!selection||!!sim,dragRoad:!!CityPlan.widths[selection]&&$('roadMode').value==='drag'&&!sim}),
     onRoadStart:p=>{roadStart=CityPlan.snap(p);},
     onRoadEnd:p=>{const placed=place(p);roadStart=null;world.ghost(null);if(placed)notice('Road placed. Drag to draw another segment.');},
     onRoadCancel:()=>{roadStart=null;world.ghost(null);},
-    onHover:p=>{if(!sim&&selection&&selection!=='remove')world.ghost(p,selection,rotation,roadStart,$('bridge').checked);}
+    onHover:p=>{if(!sim&&selection&&selection!=='remove')world.ghost(p,selection,rotation,roadStart,$('elevation').value==='bridge',$('elevation').value==='tunnel');}
   });
   function syncSites(){CITY_LOTS.splice(0,CITY_LOTS.length,...CityPlan.plan.buildings.map(b=>({...b,district:CityPlan.district(b)})));for(const key of Object.keys(lots))delete lots[key];for(const b of CITY_LOTS)lots[b.id]=b.type;}
-  function choose(type){selection=selection===type?null:type;roadStart=null;world.ghost(null);drawPalette();render();notice(!selection?'Drag anywhere on the map to move. Wheel to zoom at the pointer.':CityPlan.widths[type]?($('roadMode').value==='drag'?'Drag from the road start to its end.':'Click the start and end of a road. Continue clicking to extend it. Escape ends the road.'):'Click open land to place a building. R rotates it.');}
+  function choose(type){selection=selection===type?null:type;roadStart=null;world.ghost(null);drawPalette();render();notice(CityPlan.controlTypes[selection]?(selection==='signal'?'Click a road junction to install traffic lights.':'Click the incoming street near a junction. The preview arrow shows which traffic must obey the sign.'):!selection?'Drag anywhere on the map to move. Wheel to zoom at the pointer.':CityPlan.widths[type]?($('roadMode').value==='drag'?'Drag from the road start to its end.':'Click the start and end of a road. Continue clicking to extend it. Escape ends the road.'):'Click open land to place a building. R rotates it.');}
   function drawPalette(){
     $('palette').replaceChildren();
     for(const type of Object.keys(stock)){
@@ -34,6 +35,7 @@
       button.innerHTML='<img alt="" src="art/'+type+'.png"><span>'+labels[type]+'</span><b>×'+left(type)+'</b>';
       button.onclick=()=>choose(type);$('palette').append(button);
     }
+    for(const button of document.querySelectorAll('[data-control]')){button.disabled=!!sim;button.setAttribute('aria-pressed',selection===button.dataset.control);}
     for(const button of document.querySelectorAll('[data-road]')){button.disabled=!!sim;button.setAttribute('aria-pressed',selection===button.dataset.road);}
     $('pan').setAttribute('aria-pressed',!selection);
     $('clearRoads').disabled=!!sim||!CityPlan.plan.roads.some(r=>!r.fixed);
@@ -45,10 +47,11 @@
     let error='';
     const snapshot=JSON.stringify(CityPlan.plan);
     if(selection==='remove')error=CityPlan.remove(p);
+    else if(CityPlan.controlTypes[selection]){error=CityPlan.control(p,selection);if(!error)notice(CityPlan.controlTypes[selection]+' installed.');}
     else if(CityPlan.widths[selection]){
       p=CityPlan.snap(p);
       if(!roadStart){if(!CityPlan.land(p)){notice('Start the road on dry land.');return;}roadStart=p;notice('Choose the road end. One-way traffic follows your drawing direction.');return;}
-      error=CityPlan.road(roadStart,p,selection,$('bridge').checked);
+      error=CityPlan.road(roadStart,p,selection,$('elevation').value==='bridge',$('elevation').value==='tunnel');
       if(!error){roadStart=p;notice('Road placed. Click to extend it or press Escape to finish.');}
     }else{
       if(!left(selection)){notice('All buildings of this type have been placed.');return;}
@@ -58,9 +61,10 @@
     undo.push(snapshot);save();syncSites();drawPalette();render();return true;
   }
   document.querySelectorAll('[data-road]').forEach(button=>button.onclick=()=>choose(button.dataset.road));
-  $('undo').onclick=()=>{const snapshot=undo.pop();if(!snapshot)return;const old=JSON.parse(snapshot);CityPlan.plan.buildings=old.buildings;CityPlan.plan.roads=old.roads;CityPlan.changed();roadStart=null;world.ghost(null);save();syncSites();drawPalette();render();notice('Last edit undone.');};
+  document.querySelectorAll('[data-control]').forEach(button=>button.onclick=()=>choose(button.dataset.control));
+  $('undo').onclick=()=>{const snapshot=undo.pop();if(!snapshot)return;const old=JSON.parse(snapshot);CityPlan.plan.buildings=old.buildings;CityPlan.plan.roads=old.roads;CityPlan.plan.controls=old.controls||[];CityPlan.changed();roadStart=null;world.ghost(null);save();syncSites();drawPalette();render();notice('Last edit undone.');};
   $('clearRoads').onclick=()=>{
-    undo.push(JSON.stringify(CityPlan.plan));CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed);CityPlan.changed();roadStart=null;world.ghost(null);save();drawPalette();render();notice('Player roads cleared. Undo restores them.');
+    undo.push(JSON.stringify(CityPlan.plan));CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed);CityPlan.plan.controls=[];CityPlan.changed();roadStart=null;world.ghost(null);save();drawPalette();render();notice('Player roads cleared. Undo restores them.');
   };
   function rotate(){if(sim)return;rotation=(rotation+Math.PI/4)%(Math.PI*2);drawPalette();}
   $('rotate').onclick=rotate;
@@ -72,7 +76,11 @@
   };
   $('pan').onclick=()=>choose(null);
   $('roadMode').onchange=()=>{roadStart=null;world.ghost(null);notice($('roadMode').value==='drag'?'Drag from one road endpoint to the other.':'Click each road endpoint. Escape switches to moving the map.');};
-  $('bridge').onchange=()=>{roadStart=null;world.ghost(null);notice($('bridge').checked?'Bridge mode enabled. Choose a road type, then connect two dry-land banks.':'Land road mode enabled.');};
+  $('elevation').onchange=()=>{
+    roadStart=null;world.ghost(null);
+    const descriptions={ground:'Ground roads join at crossings.',bridge:'Draw a bridge or overpass between dry-land endpoints. Traffic passes above roads underneath.',tunnel:'Draw a tunnel between dry-land endpoints. Traffic enters at the portals and passes underground.'};
+    notice(descriptions[$('elevation').value]);
+  };
   document.addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea'))return;if(e.key==='Escape'){selection=null;roadStart=null;world.ghost(null);drawPalette();render();notice('Move map selected. Drag to explore the city.');}if(e.key.toLowerCase()==='r')rotate();});
   function history(state) {
     const pane=$('historyPane');pane.replaceChildren();
@@ -156,5 +164,15 @@
     select.onchange=()=>{settings=select.value;try{localStorage.setItem('borough-mayor',settings);}catch{}render();};
   };
   syncSites();drawPalette();render();
-  setInterval(()=>{if(sim&&!paused&&!sim.getState().finished){sim.step(speed);render();}},120);
+  let previousFrame=performance.now(),lastUI=0;
+  function frame(now){
+    const delta=Math.min(.1,(now-previousFrame)/1000);previousFrame=now;
+    if(sim&&!paused&&!sim.getState().finished){
+      sim.step(delta*4*speed);
+      if(now-lastUI>=120){render();lastUI=now;}
+      else{const state=sim.getState();world.update(lots,state.agents,state);}
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 })();

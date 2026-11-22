@@ -138,7 +138,7 @@
     let previewLine=null;
     const labelsLayer=document.createElement('div');labelsLayer.className='maplabels';container.append(labelsLayer);
     let labels=[];
-    function refreshLabels(){labelsLayer.replaceChildren();labels=[...CityPlan.landmarks,...CityPlan.plan.buildings.filter(b=>b.area)].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;labelsLayer.append(el);return {el,point:new T.Vector3(l.x,35,l.z)};});}
+    function refreshLabels(){labelsLayer.replaceChildren();labels=[...CityPlan.landmarks,...CityPlan.plan.buildings.filter(b=>b.area),...CityPlan.plan.roads.filter(r=>r.bridge||r.tunnel).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,35,l.z)};});}
     refreshLabels();
     let fog=null;
     function drawFog(){
@@ -150,32 +150,98 @@
       fog=flush();fog.children.forEach(m=>{m.castShadow=false;m.receiveShadow=false;});
     }
     drawFog();
-    let roadsGroup=null;
+    let roadsGroup=null,controlsGroup=null,controlsKey='';
+    const shoulderMaterial=new T.MeshStandardMaterial({color:0xb7b5a5,roughness:1});
+    const asphaltMaterial=new T.MeshStandardMaterial({color:0x59666a,roughness:1});
+    function flatSurface(polygons,height,material) {
+      const shapes=polygons.map(polygon=>{
+        const shape=new T.Shape(polygon[0].map(([x,z])=>new T.Vector2(x,-z)));
+        for(const ring of polygon.slice(1))shape.holes.push(new T.Path(ring.map(([x,z])=>new T.Vector2(x,-z))));
+        return shape;
+      });
+      if(!shapes.length)return null;
+      const geometry=new T.ShapeGeometry(shapes);geometry.rotateX(-Math.PI/2);
+      const mesh=new T.Mesh(geometry,material);mesh.position.y=height;mesh.receiveShadow=true;mesh.userData.ownedGeometry=true;
+      return mesh;
+    }
+    function markingBlocked(road,p){
+      return CityPlan.plan.roads.some(other=>other!==road&&Math.abs(CityPlan.heightAt(p,road)-CityPlan.heightAt(p,other))<.75&&CityPlan.dist(p,CityPlan.projection(p,other.a,other.b))<CityPlan.widths[other.type]/2+.65);
+    }
+    function drawControls(time){
+      const key=CityPlan.revision+'|'+CityPlan.plan.controls.map(c=>c.kind==='signal'?CityPlan.signalState(c,time,true):c.kind).join('|');
+      if(key===controlsKey)return;
+      controlsKey=key;disposeGroup(controlsGroup);
+      for(const control of CityPlan.plan.controls){
+        if(control.kind==='signal'){
+          for(const [dx,dz,horizontal] of [[10,10,true],[-10,-10,false]]){
+            const x=control.x+dx,z=control.z+dz;
+            box(x,3,z,.6,6,.6,0x53615b);box(x,6.1,z,2,5.3,1.3,0x263430);
+            const phase=CityPlan.signalState(control,time,horizontal);
+            ['red','amber','green'].forEach((color,i)=>part('round',x,7.7-i*1.65,z+.72,.65,.8,.65,phase===color?{red:0xf35a43,amber:0xffd468,green:0x7cce84}[color]:0x3e4944));
+          }
+        }else{
+          const arm=control.approach,flow={x:-arm.x,z:-arm.z},x=control.x+arm.x*20,z=control.z+arm.z*20,angle=-Math.atan2(flow.z,flow.x);
+          // The arrow lies in the incoming lane and points into the junction.
+          box(x,.79,z,7,.08,.65,0xf4eacf,angle);
+          for(const side of [-1,1])box(x+flow.x*2+arm.z*side*1.2,.79,z+flow.z*2-arm.x*side*1.2,3.7,.08,.65,0xf4eacf,angle+side*.65);
+          const sx=x+arm.z*7,sz=z-arm.x*7;
+          box(sx,2.3,sz,.45,4.6,.45,0x707e76);
+          if(control.kind==='stop'){
+            part('round',sx,4.8,sz,2.2,.25,2.2,0xe5e2d3);
+            part('round',sx,5.02,sz,1.86,.25,1.86,0xcf5140);
+          }else{
+            part('roof',sx,4.5,sz,2.6,.4,2.6,0xdd5c45,Math.PI/4);
+            part('roof',sx,4.8,sz,1.85,.4,1.85,0xf1ead5,Math.PI/4);
+          }
+        }
+      }
+      controlsGroup=flush();
+    }
+    function bridgeRibbon(road,width,offset,material){
+      const length=CityPlan.dist(road.a,road.b),nx=-(road.b.z-road.a.z)/length,nz=(road.b.x-road.a.x)/length,vertices=[];
+      const count=Math.ceil(length/5);
+      const vertex=(t,side)=>{const p={x:road.a.x+(road.b.x-road.a.x)*t,z:road.a.z+(road.b.z-road.a.z)*t};return [p.x+nx*side*width/2,CityPlan.heightAt(p,road)+offset,p.z+nz*side*width/2];};
+      for(let i=0;i<count;i++){const a=vertex(i/count,-1),b=vertex(i/count,1),c=vertex((i+1)/count,1),d=vertex((i+1)/count,-1);vertices.push(...a,...b,...c,...a,...c,...d);}
+      const geometry=new T.BufferGeometry();geometry.setAttribute('position',new T.Float32BufferAttribute(vertices,3));geometry.computeVertexNormals();
+      const mesh=new T.Mesh(geometry,material);mesh.receiveShadow=true;mesh.userData.ownedGeometry=true;return mesh;
+    }
     function drawRoads() {
-      disposeGroup(roadsGroup);
+      disposeGroup(roadsGroup);const bridgeSurfaces=[];
       for(const r of CityPlan.plan.roads){
         const length=CityPlan.dist(r.a,r.b),x=(r.a.x+r.b.x)/2,z=(r.a.z+r.b.z)/2;
         const angle=-Math.atan2(r.b.z-r.a.z,r.b.x-r.a.x),w=CityPlan.widths[r.type];
         if(r.bridge){
+          bridgeSurfaces.push(bridgeRibbon(r,w+2.4,-.1,shoulderMaterial),bridgeRibbon(r,w,.58,asphaltMaterial));
           const n=Math.ceil(length/5);
           for(let i=0;i<n;i++){
             const t=(i+.5)/n,p={x:r.a.x+(r.b.x-r.a.x)*t,z:r.a.z+(r.b.z-r.a.z)*t},y=CityPlan.heightAt(p,r);
-            box(p.x,y-.3,p.z,length/n+.2,1.3,w+2.4,0xb9b9a7,angle);
-            box(p.x,y+.5,p.z,length/n+.2,.15,w,0x59666a,angle);
+
             for(const side of [-1,1])box(p.x+Math.sin(angle)*side*(w/2+1),y+2,p.z+Math.cos(angle)*side*(w/2+1),length/n+.2,1.5,.45,0xe0dfc5,angle);
           }
           for(let t=35;t<length-15;t+=65){
             const p={x:r.a.x+(r.b.x-r.a.x)*t/length,z:r.a.z+(r.b.z-r.a.z)*t/length},y=CityPlan.heightAt(p,r);
             box(p.x,(y-14)/2,p.z,3.2,y+14,w*.75,0x7c9292,angle);
           }
-        }else{
-          box(x,.2,z,length,.4,w+2.4,0xb7b5a5,angle);
-          box(x,.5,z,length,.15,w,0x59666a,angle);
+        }
+        if(r.tunnel){
+          // The dashed guide stays visible while the actual tunnel and cars are underground.
+          for(let t=4;t<length-4;t+=13){
+            const p={x:r.a.x+(r.b.x-r.a.x)*t/length,z:r.a.z+(r.b.z-r.a.z)*t/length};
+            box(p.x,1.05,p.z,6,.08,w*.62,0x577e86,angle);
+          }
+          for(const [end,other] of [[r.a,r.b],[r.b,r.a]]){
+            const dx=(other.x-end.x)/length,dz=(other.z-end.z)/length;
+            box(end.x+dx*5,.85,end.z+dz*5,10,.2,w,0x24393d,angle);
+            box(end.x,4,end.z,3,1.5,w+3,0xb8b8a4,angle);
+            for(const side of [-1,1])box(end.x-dz*side*(w/2+1),2,end.z+dx*side*(w/2+1),3,4,1.5,0xa6aca0,angle);
+          }
+          continue;
         }
         const line=(offset,color,dashed)=>{
           for(let t=2;t<length-1;t+=dashed?10:4){
             const d=Math.min(dashed?4:4.1,length-t),px=r.a.x+(r.b.x-r.a.x)*(t+d/2)/length,pz=r.a.z+(r.b.z-r.a.z)*(t+d/2)/length;
-            box(px+Math.sin(angle)*offset,.62+CityPlan.heightAt({x:px,z:pz},r),pz+Math.cos(angle)*offset,d,.04,.2,color,angle);
+            const marking={x:px+Math.sin(angle)*offset,z:pz+Math.cos(angle)*offset};
+            if(!markingBlocked(r,marking))box(marking.x,.62+CityPlan.heightAt({x:px,z:pz},r),marking.z,d,.04,.2,color,angle);
           }
         };
         line(-w/2+.35,0xe7dfb8,false);line(w/2-.35,0xe7dfb8,false);
@@ -184,6 +250,7 @@
         else {
           for(let t=10;t<length-4;t+=24){
             const x=r.a.x+(r.b.x-r.a.x)*t/length,z=r.a.z+(r.b.z-r.a.z)*t/length;
+            if(markingBlocked(r,{x,z}))continue;
             box(x,.65+CityPlan.heightAt({x,z},r),z,3,.04,.25,0xf4e9c3,angle);
             for(const sign of [-1,1])box(x+Math.cos(angle)*.9+Math.sin(angle)*sign*.45,.65+CityPlan.heightAt({x,z},r),z-Math.sin(angle)*.9+Math.cos(angle)*sign*.45,1.6,.04,.22,0xf4e9c3,angle+sign*.65);
           }
@@ -201,9 +268,12 @@
           part('pine',building.x,12,building.z,2,3,2,0xe98649);
         }
       }
-      roadsGroup=flush();
+      roadsGroup=flush();if(bridgeSurfaces.length)roadsGroup.add(...bridgeSurfaces);
+      const shoulder=flatSurface(CityPlan.roadSurfaces(1.2),.4,shoulderMaterial);
+      const asphalt=flatSurface(CityPlan.roadSurfaces(),.58,asphaltMaterial);
+      if(shoulder)roadsGroup.add(shoulder);if(asphalt)roadsGroup.add(asphalt);
     }
-    let buildingMesh=null,people=null,agentCount=0;
+    let buildingMesh=null,people=null,roofs=null,wheels=null,agentCount=0;
     function drawBuilding(type,c) {
       const {x,z}=c;
       if(type==="residential"){
@@ -223,7 +293,7 @@
         for(let i=0;i<3;i++){box(x-1.95+i*1.3,1.19,z+1.35,.85,.5,1.83,[0xc47058,0xe6ce94,0x789fa4][i]);}
       }
     }
-    function disposeGroup(g) {if(g){scene.remove(g);g.children.forEach(m=>m.dispose());}}
+    function disposeGroup(g) {if(g){scene.remove(g);g.children.forEach(m=>{m.dispose?.();if(m.userData.ownedGeometry)m.geometry.dispose();});}}
     let cursor={x:0,z:500};
     let scale=1,tilt=false,pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2},lastRevision=-1,drag=null,roadDrag=null,moved=false;
     const ray=new T.Raycaster(),pos=new T.Vector2(),ground=new T.Plane(new T.Vector3(0,1,0),0);
@@ -287,16 +357,52 @@
         }
         buildingMesh=flush();drawRoads();lastRevision=CityPlan.revision;
       }
-      if(agents.length!==agentCount){if(people){scene.remove(people);people.dispose();}people=null;if(agents.length){people=new T.InstancedMesh(geometries.box,material,agents.length);people.frustumCulled=false;scene.add(people);}agentCount=agents.length;}
-      if(people){agents.forEach((a,i)=>{const person=a.kind==='resident',obj=new T.Object3D();obj.position.set(a.x,CityPlan.elevationAt(a)+(person?1.2:1.5),a.z);obj.scale.set(person?1.8:2.5,person?2.2:2,person?1.8:5);obj.updateMatrix();people.setMatrixAt(i,obj.matrix);people.setColorAt(i,new T.Color(a.kind==='ambulance'?0xffe4a0:person?0x63467e:0xc04f35));});people.instanceMatrix.needsUpdate=true;people.instanceColor.needsUpdate=true;}
+      if(agents.length!==agentCount){
+        for(const mesh of [people,roofs,wheels])if(mesh){scene.remove(mesh);mesh.dispose();}
+        people=roofs=wheels=null;
+        if(agents.length){
+          people=new T.InstancedMesh(geometries.box,material,agents.length);
+          roofs=new T.InstancedMesh(geometries.box,material,agents.length);
+          wheels=new T.InstancedMesh(geometries.box,material,agents.length*4);
+          for(const mesh of [people,roofs,wheels]){mesh.frustumCulled=false;mesh.castShadow=true;scene.add(mesh);}
+        }
+        agentCount=agents.length;
+      }
+      if(people){
+        agents.forEach((a,i)=>{
+          const person=a.kind==='resident',ground=Number.isFinite(a.height)?a.height:CityPlan.elevationAt(a),heading=a.heading||0,visible=ground>-.6?1:0;
+          const body=new T.Object3D();body.position.set(a.x,ground+(person?1.5:1.25),a.z);body.rotation.set(a.pitch||0,heading,0,'YXZ');
+          body.scale.set((person?.65:2.1)*visible,(person?1.45:.9)*visible,(person?.65:4.4)*visible);body.updateMatrix();people.setMatrixAt(i,body.matrix);
+          const palette=[0xd87451,0xe7c16d,0x729eaa,0xb7c9ad];
+          people.setColorAt(i,new T.Color(a.kind==='ambulance'?0xf5eaca:person?0x634b71:palette[(typeof a.id==='number'?a.id:parseInt(String(a.id).split('-').at(-1),10)||0)%palette.length]));
+          const roof=new T.Object3D();roof.position.set(a.x,ground+(person?2.45:2),a.z);roof.rotation.set(a.pitch||0,heading,0,'YXZ');
+          roof.scale.set((person?.55:1.65)*visible,(person?.55:.65)*visible,(person?.55:2.25)*visible);roof.updateMatrix();roofs.setMatrixAt(i,roof.matrix);
+          roofs.setColorAt(i,new T.Color(person?0xdbac85:0x344f58));
+          for(let j=0;j<4;j++){
+            const x=j%2?1.02:-1.02,z=j<2?-1.35:1.35,wheel=new T.Object3D();
+            wheel.position.set(a.x+x*Math.cos(heading)+z*Math.sin(heading),ground+.78,a.z-x*Math.sin(heading)+z*Math.cos(heading));
+            wheel.rotation.y=heading;wheel.scale.set(person?0:.42*visible,person?0:.65*visible,person?0:.85*visible);wheel.updateMatrix();wheels.setMatrixAt(i*4+j,wheel.matrix);
+            wheels.setColorAt(i*4+j,new T.Color(0x263330));
+          }
+        });
+        for(const mesh of [people,roofs,wheels]){mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;}
+      }
+      drawControls(state.minute||360);
       guard.material.color.set(state.hallProtected===false?0xe17461:0xf0d275);render();
     }
-    function ghost(p,type,rotation=0,start=null,bridge=false) {
+    function ghost(p,type,rotation=0,start=null,bridge=false,tunnel=false) {
       preview.visible=!!p;frontArrow.visible=!!p&&!CityPlan.widths[type];if(!p){if(previewLine){scene.remove(previewLine);previewLine.geometry.dispose();previewLine=null;}render();return;}
+      if(CityPlan.controlTypes[type]){
+        const placement=CityPlan.controlPlacement(p,type);preview.visible=!!placement;frontArrow.visible=!!placement?.approach;
+        if(placement){const arm=placement.approach;preview.position.set(placement.x,1.5,placement.z);preview.scale.set(15,15,1);preview.rotation.z=0;preview.material.color.set(0xffdb87);
+          if(arm){frontArrow.position.set(placement.x+arm.x*25,2,placement.z+arm.z*25);frontArrow.setDirection(new T.Vector3(-arm.x,0,-arm.z));frontArrow.setLength(15,5,4);}}
+        render();return;
+      }
+      p=CityPlan.snap(p);
       const size=CityPlan.buildingScale(type)*7.8||8;frontArrow.position.set(p.x,2,p.z);frontArrow.setDirection(new T.Vector3(Math.sin(rotation),0,Math.cos(rotation)));frontArrow.setLength(size*.8,4,3);preview.scale.set(size,size,1);preview.position.set(p.x,1.5,p.z);preview.rotation.z=-rotation;
       preview.material.color.set(CityPlan.buildingError({...p,type})?0xda785d:0xf5db96);
       if(previewLine){scene.remove(previewLine);previewLine.geometry.dispose();previewLine=null;}
-      if(start){previewLine=new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(start.x,2,start.z),new T.Vector3(p.x,2,p.z)]),new T.LineBasicMaterial({color:CityPlan.roadError(start,p,type,bridge)?0xe87564:0xffe2a0}));scene.add(previewLine);preview.visible=false;}
+      if(start){previewLine=new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(start.x,2,start.z),new T.Vector3(p.x,2,p.z)]),new T.LineBasicMaterial({color:CityPlan.roadError(start,p,type,bridge,tunnel)?0xe87564:0xffe2a0}));scene.add(previewLine);preview.visible=false;}
       render();
     }
     new ResizeObserver(resize).observe(container);resize();

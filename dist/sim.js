@@ -9,7 +9,18 @@ window.CitySim = (() => {
   function route(a, b) {
     const points = window.CITY_PATH?.(a.x, a.z, b.x, b.z);
     if (!points) return null;
-    const stops = points.length ? points : [a, b];
+    const stops=[];
+    for(let i=0;i<points.length;i++){
+      const corner=points[i],before=points[i-1],after=points[i+1];
+      if(!before||!after){stops.push(corner);continue;}
+      const incoming=distance(before,corner),outgoing=distance(corner,after);
+      const radius=Math.min(4,incoming/3,outgoing/3);
+      if(radius<.1){stops.push(corner);continue;}
+      const enter={x:corner.x+(before.x-corner.x)*radius/incoming,z:corner.z+(before.z-corner.z)*radius/incoming,height:(corner.height||0)+((before.height||0)-(corner.height||0))*radius/incoming};
+      const exit={x:corner.x+(after.x-corner.x)*radius/outgoing,z:corner.z+(after.z-corner.z)*radius/outgoing,height:(corner.height||0)+((after.height||0)-(corner.height||0))*radius/outgoing};
+      stops.push(enter);
+      for(let j=1;j<=6;j++){const t=j/6,u=1-t;stops.push({x:u*u*enter.x+2*u*t*corner.x+t*t*exit.x,z:u*u*enter.z+2*u*t*corner.z+t*t*exit.z,height:u*u*enter.height+2*u*t*(corner.height||0)+t*t*exit.height});}
+    }
     const lengths = stops.slice(1).map((p, i) => distance(p, stops[i]));
     return {stops, lengths, length: lengths.reduce((total, n) => total + n, 0)};
   }
@@ -20,11 +31,57 @@ window.CitySim = (() => {
       const length = path.lengths[i];
       if (length && offset <= length) {
         const a = path.stops[i], b = path.stops[i + 1], t = offset / length;
-        return {x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t};
+        return {x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t,height:(a.height||0)+((b.height||0)-(a.height||0))*t,pitch:-Math.atan2((b.height||0)-(a.height||0),length),heading:Math.atan2(b.x-a.x,b.z-a.z),direction:{x:(b.x-a.x)/length,z:(b.z-a.z)/length}};
       }
       offset -= length;
     }
-    return path.stops[path.stops.length - 1];
+    const last=path.stops.length-1,a=path.stops[Math.max(0,last-1)],b=path.stops[last];return {...b,heading:Math.atan2(b.x-a.x,b.z-a.z)};
+  }
+
+  function travelTimeline(path,startTime,speed,kind='car') {
+    const events=[];
+    if(kind==='car'){
+      let offset=0;
+      path.lengths.forEach((length,i)=>{
+        const a=path.stops[i],b=path.stops[i+1];
+        if(length>.001)for(const control of CityPlan.plan.controls){
+          const p=CityPlan.projection(control,a,b);
+          if(CityPlan.dist(p,control)<4&&p.t>0&&p.t<=1){
+            const at=offset+length*p.t;
+            if(!events.some(event=>event.control.id===control.id&&Math.abs(event.at-at)<12))events.push({at,control,direction:{x:(b.x-a.x)/length,z:(b.z-a.z)/length}});
+          }
+        }
+        offset+=length;
+      });
+    }
+    events.sort((a,b)=>a.at-b.at);
+    const segments=[];let cursor=0,time=0;
+    for(const event of events){
+      const stop=Math.max(cursor,event.at-10);
+      const arrival=time+(stop-cursor)/speed;
+      if(stop>cursor)segments.push({from:cursor,to:stop,start:time,end:arrival});
+      const wait=CityPlan.waitAt(event.control,startTime+arrival,event.direction);
+      if(wait>0)segments.push({from:stop,to:stop,start:arrival,end:arrival+wait,waiting:true,control:event.control.kind});
+      cursor=stop;time=arrival+wait;
+    }
+    const end=time+(path.length-cursor)/speed;
+    segments.push({from:cursor,to:path.length,start:time,end});
+    return {segments,duration:end};
+  }
+  function timedPosition(path,timeline,age) {
+    const segment=timeline.segments.find(s=>age<=s.end)||timeline.segments.at(-1);
+    const progress=segment.end>segment.start?clamp((age-segment.start)/(segment.end-segment.start),0,1):1;
+    const offset=segment.from+(segment.to-segment.from)*progress;
+    return {...position(path,path.length?offset/path.length:1),waiting:!!segment.waiting,offset};
+  }
+  function lanePosition(p,id=0) {
+    if(!p.direction)return p;
+    const road=CityPlan.plan.roads.map(r=>({r,p:CityPlan.projection(p,r.a,r.b)})).sort((a,b)=>CityPlan.dist(p,a.p)-CityPlan.dist(p,b.p))[0];
+    if(!road||CityPlan.dist(p,road.p)>4)return p;
+    const junctionDistance=Math.min(Infinity,...CityPlan.junctions().map(j=>CityPlan.dist(j,p)));
+    const taper=Math.min(1,junctionDistance/12);
+    const lane=road.r.type==='oneway'?0:road.r.type==='highway'?(id%2?5.1:1.75):1.8;
+    return {...p,x:p.x-p.direction.z*lane*taper,z:p.z+p.direction.x*lane*taper};
   }
 
   function start(lots, config = {}) {
@@ -78,19 +135,20 @@ window.CitySim = (() => {
         from = dest;
       };
       // Drivers return to their parked cars first, then park close to the next destination.
-      if (p.id % 3 === 0 && parking.length && mode !== 'walk') {
+      if (p.id % 3 !== 1 && parking.length && mode !== 'walk') {
         const lot = parking.reduce((best,l) => distance(l,to)<distance(best,to) ? l : best);
         if (p.carAt) add(p.carAt,'resident');
         add(lot,'car');
         p.carAt = lot;
       }
-      add(to,'resident');
+      add(to,p.id%3!==1&&!parking.length?'car':'resident');
       if (legs.some(leg => !leg.path)) { p.activity = 'stranded'; return; }
       const peak = minute < 570 || (minute > 970 && minute < 1060);
       let duration = 0;
       for (const leg of legs) {
         const speed = leg.kind === 'car' ? (peak ? 230 : 320) : 88;
-        duration += Math.max(1,leg.path.length/speed);
+        leg.timeline=travelTimeline(leg.path,minute+duration,speed,leg.kind);
+        duration+=Math.max(.01,leg.timeline.duration);
         leg.end = duration;
       }
       p.trip = {start:minute, legs, duration, to, activity};
@@ -247,10 +305,29 @@ window.CitySim = (() => {
       const rush=(minute>=390&&minute<=570)||(minute>=990&&minute<=1170);
       const highway=CityPlan.plan.roads.find(r=>r.fixed);
       if(rush&&highway){
+        const now=minute+elapsed,through=[];
         for(let i=0;i<20;i++){
-          const t=((minute*0.028+i/20)%1);
-          const east=i%2===0,progress=east?t:1-t;
-          agents.push({x:highway.a.x+(highway.b.x-highway.a.x)*progress,z:highway.a.z+(east?2.5:-2.5),kind:'car',id:'through-'+i});
+          const firstSpawn=(minute<900?390:990)+i*.4;
+          if(now<firstSpawn)continue;
+          const spawn=firstSpawn+Math.floor((now-firstSpawn)/8)*8,age=now-spawn;
+          const east=i%2===0,a=east?highway.a:highway.b,b=east?highway.b:highway.a;
+          const path={stops:[a,b],lengths:[distance(a,b)],length:distance(a,b)};
+          const timeline=travelTimeline(path,spawn,230);
+          if(age>timeline.duration)continue;
+          const p=timedPosition(path,timeline,age);
+          through.push({...p,kind:'car',id:'through-'+i,lane:i%4,east});
+        }
+        // Keep a car length of space within each through lane, including at red lights.
+        for(let lane=0;lane<4;lane++){
+          let ahead=Infinity;
+          for(const car of through.filter(c=>c.lane===lane).sort((a,b)=>b.offset-a.offset)){
+            const offset=Math.min(car.offset,ahead-7);
+            if(offset<0)continue;
+            ahead=offset;
+            const a=car.east?highway.a:highway.b,b=car.east?highway.b:highway.a,progress=offset/distance(a,b);
+            const laneOffset=lane<2?1.75:5.1;
+            agents.push({...car,x:a.x+(b.x-a.x)*progress,z:highway.a.z+(car.east?laneOffset:-laneOffset)});
+          }
         }
       }
       for (const p of residents) {
@@ -259,7 +336,8 @@ window.CitySim = (() => {
         let prev = 0;
         for (const leg of p.trip.legs) {
           if (age <= leg.end) {
-            agents.push({...position(leg.path,(age-prev)/(leg.end-prev)), kind:leg.kind,id:p.id});
+            const point=timedPosition(leg.path,leg.timeline,age-prev);
+            agents.push({...((leg.kind==='car')?lanePosition(point,p.id):point),kind:leg.kind,id:p.id});
             break;
           }
           prev = leg.end;
@@ -274,7 +352,7 @@ window.CitySim = (() => {
       const count = type => residents.filter(p => p.activity === type).length;
       return {minute, finished:ended, agents,population:n, satisfaction, hallProtected, districts,
         authority:round(districts.reduce((sum,d) => sum+d.authority,0)/Math.max(1,districts.length)),
-        events,mayorMode,pending,throughTraffic:rush?20:0,workersArrived:residents.filter(p=>p.jobsDone).length,commuting:count('commuting'),socializing:count('social'),atHome:count('home'),atWork:count('work'),stranded:count('stranded')};
+        events,mayorMode,pending,throughTraffic:agents.filter(a=>String(a.id).startsWith('through-')).length,workersArrived:residents.filter(p=>p.jobsDone).length,commuting:count('commuting'),socializing:count('social'),atHome:count('home'),atWork:count('work'),stranded:count('stranded')};
     }
     return {getState,step(minutes) {
       if (Number.isFinite(minutes) && minutes > 0 && !disposed && !ended && !pending) {
@@ -285,5 +363,5 @@ window.CitySim = (() => {
       return getState();
     },dispose() {disposed=true; controller?.abort();}};
   }
-  return {start};
+  return {start,travelTimeline,timedPosition};
 })();

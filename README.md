@@ -16,13 +16,13 @@ Level 2 adds the West End and North End. Level 3 opens the river crossing to Ken
 
 Select highway, one-way or two-way roads. Highways have two lanes in each direction. Two-way roads have one lane in each direction. One-way travel follows the drawing direction. Choose Click points or Drag road in the drawing selector. Click a selected tool again to deselect it. Move map also deselects tools. Drag the map to pan and use the wheel to zoom around the pointer. Shift drag pans while a road tool is selected. Escape ends the road and switches to moving.
 
-Bridge over water works with all three road types. Both bridge endpoints must be on dry land. Bridges use raised decks, ramps, railings and supports. Traffic uses them within the same route network.
+Road elevation supports ground, bridge/overpass and tunnel construction with all three road types. Structure endpoints must be on dry land. Bridges can cross water or land roads using continuous raised decks, ramps, railings and supports. Tunnels have portals and a dashed route guide. Underground vehicles are hidden until they emerge. Roads at different heights cross independently and connect at matching-height endpoints.
 
-Road endpoints snap to neighborhood access points and other roads. Neighborhood access needs a clear connection within 20 meters of the road curb. Light driveways confirm access. Orange markers indicate missing access. Road access help explains the rule. Neighborhoods and landmarks are fixed. Bulldoze removes player roads. Undo reverses the latest edit.
+Ground-road surfaces merge into continuous junctions, with road markings opening at the connection. Road endpoints snap to neighborhood access points and other roads. Neighborhood access needs a clear connection within 20 meters of the road curb. Light driveways confirm access. Orange markers indicate missing access. Road access help explains the rule. Neighborhoods and landmarks are fixed. Bulldoze removes player roads. Undo reverses the latest edit.
 
 Keyboard controls on the map use arrows for 25-meter cursor movement and Shift arrows for five-meter movement. Enter places an endpoint. With Move map selected, arrows pan the view.
 
-Rush-hour through traffic enters and exits along the fixed highway, following that route through the city. It appears during the morning and evening peaks and is counted separately from neighborhood residents. The model uses scheduled traffic flow. Individual vehicle collision and queue simulation remains a later refinement.
+Rush-hour through traffic enters and exits along the fixed highway. Cars have low-poly bodies, roofs and wheels. Animation follows directed routes, smooth turns, lane positions and actual bridge/tunnel elevations. Traffic lights alternate crossing directions. Stop signs stop the selected incoming approach, while yield signs slow it. Through lanes maintain a car-length gap at queues. Junction priority and citywide collision physics remain simplified.
 
 The mayor's thought bubble opens the public explanations, orders and outcomes. Model-generated orders are labeled Qwen. Resident routines follow the directed player road network, including driveway access. Leisure trips occur only when a usable route exists.
 
@@ -38,5 +38,7 @@ Sources:
 - https://services2.arcgis.com/d0NFID1O0ng4wccB/ArcGIS/rest/services/Boston_Municipality_Boundary/FeatureServer
 - https://www.mass.gov/info-details/massgis-data-massdep-hydrography-125000
 - https://services1.arcgis.com/hGdibHYSPO59RG1h/arcgis/rest/services/Massachusetts_Water_Features/FeatureServer
+
+Traffic controls can be placed at connected junctions. Select Traffic lights and click the junction. For Stop sign or Yield sign, click the incoming street near that junction. The preview arrow points into the junction and shows the controlled direction. Placing another sign on the same approach replaces it. Bulldoze also removes signs. Controls persist with the plan and participate in Undo.
 
 The browser saves progress under borough-levels-v1. Earlier free-placement and arcade saves remain under their previous keys. Timed building deliveries and additional disaster scenarios are pending.
