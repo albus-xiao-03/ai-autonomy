@@ -224,7 +224,7 @@
     else if(s)$('residentThoughts').replaceChildren(Object.assign(document.createElement('small'),{textContent:s.autonomousCount?s.autonomousCount+' autonomous residents · first thoughts arrive within the hour':'All residents follow routines (slider at 0%).'}));
     if(s) {
       const rows=(items)=>items.map(([key,value])=>{const row=document.createElement('div');row.className='statrow';const name=document.createElement('span');name.textContent=key;const val=document.createElement('b');val.textContent=value;row.append(name,val);return row;});
-      $('routines').replaceChildren(...rows([['Simulated agents',s.population],['At home',s.atHome],['In transit',s.commuting],['At work',s.atWork],['Socializing',s.socializing],['No route',s.stranded||0],['Sheltered',s.sheltered||0],['Active incidents',(s.incidents||[]).filter(i=>!['resolved','averted'].includes(i.status)).length]]));
+      $('routines').replaceChildren(...rows([['Simulated agents',s.population],['Street traffic (visual)',world.trafficCount+' cars'],['At home',s.atHome],['In transit',s.commuting],['At work',s.atWork],['Socializing',s.socializing],['No route',s.stranded||0],['Sheltered',s.sheltered||0],['Active incidents',(s.incidents||[]).filter(i=>!['resolved','averted'].includes(i.status)).length]]));
       $('districts').replaceChildren(...rows(s.districts.map(d=>[d.name,d.status])));
     }
     $('serviceAccess').textContent=CityPlan.landmarks.filter(l=>['hall','hospital'].includes(l.site)).map(l=>l.name+' · '+(CityPlan.access(l)?'road access connected':'needs road access')).join(' / ');
@@ -293,6 +293,7 @@
   let previousFrame=performance.now(),lastUI=0;
   function frame(now){
     const delta=Math.min(.1,(now-previousFrame)/1000);previousFrame=now;
+    world.setTrafficPaused(!!sim&&(paused||sim.getState().finished));
     if(sim&&!paused&&!sim.getState().finished){
       sim.step(delta*4*speed);
       if(now-lastUI>=120){render();lastUI=now;}

@@ -11,9 +11,11 @@
     let camera=orthoCamera;
     const skyColor=new T.Color(0xbfd6e4),planColor=new T.Color(0x7ba9ba),haze=new T.Fog(0xbfd6e4,2000,8000);
     const renderer=new T.WebGLRenderer({antialias:true,alpha:false,powerPreference:"low-power"});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
     renderer.shadowMap.enabled=true;
     renderer.shadowMap.type=T.PCFSoftShadowMap;
+    // Shadows are re-rendered only when static content changes (buildings, roads, incidents), not every frame.
+    renderer.shadowMap.autoUpdate=false;let shadowsDirty=true;
     renderer.domElement.style.cssText="width:100%;height:100%;display:block;touch-action:none";
     renderer.domElement.tabIndex=0;
     renderer.domElement.setAttribute("aria-label","Boston map. Select a road and click endpoints or drag. Deselect tools to pan. Scroll to zoom. Arrow keys move the cursor. Enter places a road endpoint.");
@@ -230,16 +232,25 @@
     function buildCity(){
       buildStreets();
       for(const b of CityPlan.city){if(b.k==='unique'){if(b.fp)uniqueBuilding(b);}else cityBuilding(b);}
-      for(const tile of cityTiles.values())for(const layer of ['mass','detail','fine']){
-        const group=new T.Group();group.visible=layer==='mass';scene.add(group);tile.groups[layer]=group;
-        const byShape={};for(const p of tile.layers[layer])(byShape[p.shape]??=[]).push(p);
-        for(const [shape,list] of Object.entries(byShape)){
-          const mesh=new T.InstancedMesh(geometries[shape],material,list.length);
-          list.forEach((p,i)=>{mesh.setMatrixAt(i,p.matrix);mesh.setColorAt(i,new T.Color(p.color));if(!cityInstances.has(p.id))cityInstances.set(p.id,[]);cityInstances.get(p.id).push({mesh,i,matrix:p.matrix});});
-          mesh.castShadow=layer==='mass';mesh.receiveShadow=layer!=='fine';mesh.computeBoundingSphere();group.add(mesh);
+      // Masses are always visible, so they share one instanced mesh per shape (few draw calls);
+      // detail and window layers stay tiled so only the tiles in view are drawn when zoomed in.
+      const instance=(group,list,shape,castShadow,receiveShadow)=>{
+        const mesh=new T.InstancedMesh(geometries[shape],material,list.length);
+        list.forEach((p,i)=>{mesh.setMatrixAt(i,p.matrix);mesh.setColorAt(i,new T.Color(p.color));if(!cityInstances.has(p.id))cityInstances.set(p.id,[]);cityInstances.get(p.id).push({mesh,i,matrix:p.matrix});});
+        mesh.castShadow=castShadow;mesh.receiveShadow=receiveShadow;mesh.computeBoundingSphere();group.add(mesh);
+      };
+      const massGroup=new T.Group(),massByShape={};scene.add(massGroup);
+      for(const tile of cityTiles.values()){
+        for(const p of tile.layers.mass)(massByShape[p.shape]??=[]).push(p);
+        tile.layers.mass=null;
+        for(const layer of ['detail','fine']){
+          const group=new T.Group();group.visible=false;scene.add(group);tile.groups[layer]=group;
+          const byShape={};for(const p of tile.layers[layer])(byShape[p.shape]??=[]).push(p);
+          for(const [shape,list] of Object.entries(byShape))instance(group,list,shape,false,layer!=='fine');
+          tile.layers[layer]=null;
         }
-        tile.layers[layer]=null;
       }
+      for(const [shape,list] of Object.entries(massByShape))instance(massGroup,list,shape,true,true);
       lockOutlines();
     }
     let cityGone=new Set();
@@ -467,7 +478,7 @@
     renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();const before=pick(e);scale=Math.max(.7,Math.min(60,scale*(e.deltaY<0?1.15:1/1.15)));resize();const after=pick(e);if(before&&after){pan.x+=before.x-after.x;pan.z+=before.z-after.z;resize();}},{passive:false});
     renderer.domElement.addEventListener('pointerleave',()=>{ghost(null);document.getElementById('buildHint').textContent='';});
     function render() {
-      renderer.render(scene,camera);
+      lastRender=performance.now();if(shadowsDirty){renderer.shadowMap.needsUpdate=true;shadowsDirty=false;}renderer.render(scene,camera);
       const width=container.clientWidth,height=container.clientHeight;
       const occupied=[];labels.forEach(({el,point})=>{const pt=point.clone().project(camera);el.style.left=(pt.x+1)*width/2+'px';el.style.top=(1-pt.y)*height/2+'px';const x=(pt.x+1)*width/2,y=(1-pt.y)*height/2;const bounds=CityPlan.activeBounds;const hidden=point.x<bounds.minX||point.x>bounds.maxX||point.z<bounds.minZ||point.z>bounds.maxZ||pt.z>1||Math.abs(pt.x)>1||Math.abs(pt.y)>1||occupied.some(p=>Math.abs(p.x-x)<105&&Math.abs(p.y-y)<23);el.style.display=hidden?'none':'';if(!hidden)occupied.push({x,y});});
     }
@@ -496,7 +507,7 @@
       if(labelKey!==incidentLabelKey){latestIncidents=active;incidentLabelKey=labelKey;refreshLabels();}
       const key=CityPlan.revision+'|'+Math.floor((state.minute||0)*3)+'|'+labelKey;
       if(key===incidentEffectKey)return;
-      incidentEffectKey=key;disposeGroup(incidentGroup);
+      incidentEffectKey=key;disposeGroup(incidentGroup);shadowsDirty=true;
       const water=[];
       for(const incident of active){
         const {x,z,radius,kind}=incident;
@@ -554,7 +565,7 @@
             part('round',c.x,.95,c.z,c.radius,.3,c.radius,0xd9c27a);box(c.x,4,c.z,.6,6,.6,0x4a4f4a);box(c.x,6.8,c.z,6,1.8,.3,0xf1d181,-(c.rotation||0));
           }else{origin={...c,damage:damageById[c.id]||0};modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,c);origin=null;modelScale=1;}
         }
-        buildingMesh=flush();applyCityRemoval();applyStreetRemoval();drawRoads();lastRevision=CityPlan.revision;lastDamageKey=damageKey;
+        buildingMesh=flush();applyCityRemoval();applyStreetRemoval();drawRoads();shadowsDirty=true;lastRevision=CityPlan.revision;lastDamageKey=damageKey;
       }
       if(agents.length!==agentCount){
         for(const mesh of [people,roofs,wheels])if(mesh){scene.remove(mesh);mesh.dispose();}
@@ -563,7 +574,7 @@
           people=new T.InstancedMesh(geometries.box,material,agents.length);
           roofs=new T.InstancedMesh(geometries.box,material,agents.length);
           wheels=new T.InstancedMesh(geometries.box,material,agents.length*4);
-          for(const mesh of [people,roofs,wheels]){mesh.frustumCulled=false;mesh.castShadow=true;scene.add(mesh);}
+          for(const mesh of [people,roofs,wheels]){mesh.frustumCulled=false;mesh.castShadow=false;scene.add(mesh);}
         }
         agentCount=agents.length;
       }
@@ -586,7 +597,7 @@
         });
         for(const mesh of [people,roofs,wheels]){mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;}
       }
-      drawControls(state.minute||360);drawIncidents(state);
+      if(Number.isFinite(state.minute))trafficMinute=state.minute;drawControls(state.minute||360);drawIncidents(state);
       guard.material.color.set(state.hallProtected===false?0xe17461:0xf0d275);render();
     }
     const incidentCursor=new T.Mesh(new T.CircleGeometry(1,48),new T.MeshBasicMaterial({color:0xda7658,transparent:true,opacity:.28,side:T.DoubleSide,depthWrite:false}));
@@ -646,8 +657,70 @@
     });
     window.addEventListener('keyup',e=>pressed.delete(e.key.toLowerCase()));
     window.addEventListener('blur',()=>pressed.clear());
+    // ---- Visual street traffic ----
+    // Low-poly cars drive the street network (real Boston streets plus player roads and I-93
+    // surface sections): right-hand lanes, one-way directions, turns at intersections, more cars
+    // at rush hour. Visual only, about one car per 18 residents at rush hour; the simulated commuters remain
+    // the source of truth. Updated and drawn only when zoomed in enough to see them.
+    const TRAFFIC_MAX=1600,TRAFFIC_RESIDENTS_PER_CAR=18,TRAFFIC_MIN_ZOOM=1.6,trafficCars=[],trafficColors=[0xd87451,0xe7c16d,0x729eaa,0xb7c9ad,0xe8e4d8,0x3f4a52,0x9b3b34];
+    let trafficGraph=null,trafficRevision=-1,trafficSeed=7,trafficMinute=480,trafficPaused=false,trafficDirty=true,trafficShown=0,lastRender=0;
+    let trafficBodies=null,trafficRoofs=null,trafficWheels=null;const trafficObject=new T.Object3D();
+    const trafficRand=()=>((trafficSeed=Math.imul(trafficSeed,1664525)+1013904223>>>0)/4294967296);
+    function buildTrafficGraph(){
+      const nodes=new Map(),edges=[],byKey=new Map(),key=p=>p.x.toFixed(1)+','+p.z.toFixed(1);
+      for(const r of CityPlan.plan.roads){
+        if(r.tunnel||CityPlan.roadBlocked(r))continue;
+        const len=CityPlan.dist(r.a,r.b);if(len<1)continue;
+        const oneway=r.type==='oneway'||!!r.oneway;
+        const add=(a,b,forward)=>{const e={from:key(a),to:key(b),a,b,len,road:r,oneway,width:CityPlan.roadWidth(r),dir:{x:(b.x-a.x)/len,z:(b.z-a.z)/len}};edges.push(e);if(!nodes.has(e.from))nodes.set(e.from,[]);nodes.get(e.from).push(e);byKey.set(r.id+(forward?'>':'<'),e);};
+        add(r.a,r.b,true);if(!oneway)add(r.b,r.a,false);
+      }
+      return {nodes,edges,byKey,total:edges.reduce((sum,e)=>sum+e.len,0)};
+    }
+    function pickTrafficEdge(){let t=trafficRand()*trafficGraph.total;for(const e of trafficGraph.edges){t-=e.len;if(t<=0)return e;}return trafficGraph.edges[0];}
+    function nextTrafficEdge(car){
+      const options=trafficGraph.nodes.get(car.edge.to)||[],forward=options.filter(e=>e.to!==car.edge.from),list=forward.length?forward:options;
+      if(!list.length)return null;
+      let total=0;const weights=list.map(e=>{const w=1.25+e.dir.x*car.edge.dir.x+e.dir.z*car.edge.dir.z;total+=w;return w;});
+      let t=trafficRand()*total;for(let i=0;i<list.length;i++){t-=weights[i];if(t<=0)return list[i];}return list[list.length-1];
+    }
+    function spawnTrafficCar(){const edge=pickTrafficEdge();return {edge,s:trafficRand()*edge.len,speed:7+trafficRand()*6,lane:trafficRand()<.5?-1:1,color:trafficColors[Math.floor(trafficRand()*trafficColors.length)]};}
+    function trafficDensity(minute){const h=minute/60,peak=(c,w)=>Math.exp(-((h-c)*(h-c))/(2*w*w));return Math.min(1,.18+.82*Math.max(peak(8,1.1),peak(17.5,1.3))+.25*peak(12.5,2));}
+    function trafficTick(dt){
+      if(CityPlan.revision!==trafficRevision){
+        trafficGraph=buildTrafficGraph();trafficRevision=CityPlan.revision;trafficDirty=true;
+        for(let i=trafficCars.length-1;i>=0;i--){const c=trafficCars[i],e=trafficGraph.byKey.get(c.edge.road.id+(c.edge.a===c.edge.road.a?'>':'<'));if(e)c.edge=e;else trafficCars.splice(i,1);}
+      }
+      const target=trafficGraph.edges.length?Math.round(Math.min(TRAFFIC_MAX,CityPlan.cityPopulation()/TRAFFIC_RESIDENTS_PER_CAR)*trafficDensity(trafficMinute)):0;
+      while(trafficCars.length<target){trafficCars.push(spawnTrafficCar());trafficDirty=true;}
+      if(trafficCars.length>target){trafficCars.length=target;trafficDirty=true;}
+      if(!trafficBodies){
+        trafficBodies=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX);trafficRoofs=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX);trafficWheels=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX*4);
+        for(const m of [trafficBodies,trafficRoofs,trafficWheels]){m.frustumCulled=false;m.count=0;scene.add(m);}
+        for(let i=0;i<TRAFFIC_MAX;i++){trafficRoofs.setColorAt(i,new T.Color(0x344f58));for(let j=0;j<4;j++)trafficWheels.setColorAt(i*4+j,new T.Color(0x263330));}
+      }
+      const visible=scale>=TRAFFIC_MIN_ZOOM;
+      if(!visible){if(trafficShown){trafficBodies.count=trafficRoofs.count=trafficWheels.count=0;trafficShown=0;return true;}return false;}
+      const moving=!trafficPaused&&dt>0;
+      if(!moving&&!trafficDirty&&trafficShown===trafficCars.length)return false;
+      trafficCars.forEach((car,i)=>{
+        if(moving){car.s+=car.speed*dt;while(car.s>car.edge.len){car.s-=car.edge.len;const next=nextTrafficEdge(car);if(!next){Object.assign(car,spawnTrafficCar());break;}car.edge=next;}}
+        const e=car.edge,d=e.dir,offset=e.oneway?(e.width>7?car.lane*e.width/4:0):e.width/4;
+        const p={x:e.a.x+d.x*car.s,z:e.a.z+d.z*car.s},x=p.x-d.z*offset,z=p.z+d.x*offset,ground=e.road.bridge||e.road.fixed?CityPlan.heightAt(p,e.road):0,heading=Math.atan2(d.x,d.z);
+        trafficObject.position.set(x,ground+1.25,z);trafficObject.rotation.set(0,heading,0);trafficObject.scale.set(2.1,.9,4.4);trafficObject.updateMatrix();trafficBodies.setMatrixAt(i,trafficObject.matrix);
+        if(trafficDirty)trafficBodies.setColorAt(i,new T.Color(car.color));
+        trafficObject.position.set(x,ground+2,z);trafficObject.scale.set(1.65,.65,2.25);trafficObject.updateMatrix();trafficRoofs.setMatrixAt(i,trafficObject.matrix);
+        for(let j=0;j<4;j++){const wx=j%2?1.02:-1.02,wz=j<2?-1.35:1.35;trafficObject.position.set(x+wx*Math.cos(heading)+wz*Math.sin(heading),ground+.78,z-wx*Math.sin(heading)+wz*Math.cos(heading));trafficObject.scale.set(.42,.65,.85);trafficObject.updateMatrix();trafficWheels.setMatrixAt(i*4+j,trafficObject.matrix);}
+      });
+      trafficBodies.count=trafficRoofs.count=trafficCars.length;trafficWheels.count=trafficCars.length*4;trafficShown=trafficCars.length;
+      for(const m of [trafficBodies,trafficRoofs,trafficWheels])m.instanceMatrix.needsUpdate=true;
+      if(trafficDirty&&trafficBodies.instanceColor)trafficBodies.instanceColor.needsUpdate=true;
+      trafficDirty=false;return true;
+    }
     function cameraLoop(now){
       const elapsed=Math.min(.1,(now-cameraFrame)/1000);cameraFrame=now;
+      // Traffic moves in real time; render here only if update() has not just rendered this frame.
+      if(trafficTick(elapsed)&&now-lastRender>12)render();
       if(pressed.size){
         const rate=450*elapsed/scale,dx=(Number(pressed.has('d'))-Number(pressed.has('a')))*rate,dz=(Number(pressed.has('s'))-Number(pressed.has('w')))*rate;
         pan.x+=dx*Math.cos(azimuth)+dz*Math.sin(azimuth);pan.z+=-dx*Math.sin(azimuth)+dz*Math.cos(azimuth);
@@ -658,7 +731,7 @@
     }
     requestAnimationFrame(cameraLoop);
     new ResizeObserver(resize).observe(container);resize();
-    return {update,ghost,incidentPreview,roadPreview,snapTolerance,zoom(delta){scale=Math.max(.7,Math.min(60,scale*(delta>0?1.4:1/1.4)));resize();},resetView(){scale=1;azimuth=0;elevationAngle=Math.PI/2-.001;tilt=false;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},focusLevel(){scale=1;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},toggleView(mode){tilt=mode==='3d'?true:mode==='top'?false:!tilt;elevationAngle=tilt?Math.PI*.3:Math.PI/2-.001;if(!tilt)azimuth=0;resize();return tilt;},get is3D(){return tilt;}};
+    return {update,ghost,setTrafficPaused(value){trafficPaused=!!value;},get trafficCount(){return scale>=TRAFFIC_MIN_ZOOM?trafficShown:trafficCars.length;},incidentPreview,roadPreview,snapTolerance,zoom(delta){scale=Math.max(.7,Math.min(60,scale*(delta>0?1.4:1/1.4)));resize();},resetView(){scale=1;azimuth=0;elevationAngle=Math.PI/2-.001;tilt=false;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},focusLevel(){scale=1;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},toggleView(mode){tilt=mode==='3d'?true:mode==='top'?false:!tilt;elevationAngle=tilt?Math.PI*.3:Math.PI/2-.001;if(!tilt)azimuth=0;resize();return tilt;},get is3D(){return tilt;}};
   }
   window.CityWorld={mount};
 })();
