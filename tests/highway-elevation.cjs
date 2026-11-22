@@ -7,7 +7,7 @@ const context = { console };
 context.window = context;
 vm.createContext(context);
 for (const name of ['geography', 'highway-data', 'planner']) {
-  vm.runInContext(fs.readFileSync(path.join(root, 'dist', name + '.js'), 'utf8'), context, { filename: name + '.js' });
+  vm.runInContext(fs.readFileSync(path.join(root, 'game', name + '.js'), 'utf8'), context, { filename: name + '.js' });
 }
 const { CityPlan: plan, BOSTON_HIGHWAY_DATA: data, BOSTON_GEOGRAPHY: geo } = context;
 for (let level = 1; level <= 4; level++) {

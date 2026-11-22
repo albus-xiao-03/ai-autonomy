@@ -18,19 +18,19 @@ Project: **Boston AI Mayor** (three.js browser game). A local LLM mayor (qwen3:8
 - Expand scope. If a request conflicts with SPEC.md, say so and ask.
 
 ## Commands
-- Install: no package installation/build step. Python 3 serves the static `dist/` app; Three.js and polygon-clipping are vendored.
-- Run game: `python3 -m http.server 8712 --bind 127.0.0.1 --directory dist` from the repository root (serves on http://127.0.0.1:8712). If already running, reuse that server.
+- Install: no package installation/build step. Python 3 serves the static `game/` app; Three.js and polygon-clipping are vendored.
+- Run game: `python3 -m http.server 8712 --bind 127.0.0.1 --directory game` from the repository root (serves on http://127.0.0.1:8712). If already running, reuse that server.
 - Tests: `node tests/highway-elevation.cjs` (Node 18+, built-in modules only) verifies the real I-93 corridor, imported heights, all four ramp-to-player-street connections, every level boundary, and player bridge/tunnel profiles. On this machine Node is `/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node`. Syntax check: `for file in dist/*.js; do node --check "$file" || exit; done`. Broader road/incident audit harnesses remain temporary in `/tmp`. Browser checks follow the supplied `/Users/utkarsh/Downloads/repo-kit/.claude/skills/verify-game/SKILL.md`.
 - Ollama: `ollama serve` (default http://localhost:11434), model `qwen3:8b`
 
 ## Code map
-- Game entry: `dist/index.html` loads scripts; `dist/app.js` initializes state/UI, `start`, `render`, `frame`; `dist/world.js` `CityWorld.mount` renders Three.js.
-- Roads / junctions / traffic: `dist/planner.js`: `CityPlan.roadPath`, `buildGraph`, `route`, `roadSurfaces`, `controlPlacement`, `waitAt`, `heightAt`; `dist/world.js`: `drawRoads`, `drawControls`, `roadPreview`, input handlers; `dist/sim.js`: `travelTimeline`, `timedPosition`, `lanePosition`. Fixed source geometry: `dist/highway-data.js`.
-- Buildings / palette: `dist/app.js`: `stock`, `drawPalette`, `choose`, `place`, `save`, Undo/startup load; `dist/planner.js`: `place`, `buildingError`, `access`, `remove`, `seedArcade`; `dist/world.js`: `drawBuilding`. Land/shoreline: `dist/geography.js`; fixed landmarks: `dist/planner.js` `landmarks`.
-- Residents: `dist/sim.js`: `start`, `createHousehold`, `residentTick`, `addTrip`, `refreshNetwork`. Routine residents only; no autonomous resident model or mix slider.
-- Mayor (prompt, parser, fallback): `dist/sim.js`: `decide`, `dispatch`, `outreach`, `record`; `dist/app.js`: `start` supplies local qwen3:8b endpoint, `history`/`render` display decisions. `decide` still allows generic nonlocal endpoints, pauses simulation while pending, and omits satisfaction from the prompt.
-- Events: `dist/incidents.js`: `CityIncidents.types`, `create`, `spawn`, `tick`, `respond`, `updateNetwork`; `dist/planner.js`: `setClosures`, `roadBlocked`; `dist/world.js`: `drawIncidents`; `dist/app.js` Events tab handlers. Noon corruption remains in `dist/sim.js` `tick`. The previously audited incident implementation was checkpointed in commit `0b9fc39`.
-- Satisfaction score + HUD: `dist/sim.js` `getState` computes one overall score; `dist/app.js` `render` writes `#happy` in `dist/index.html`. District scores, score graph, mayor prompt feedback, and before/after action score logs are missing.
+- Game entry: `game/index.html` loads scripts; `game/app.js` initializes state/UI, `start`, `render`, `frame`; `game/world.js` `CityWorld.mount` renders Three.js.
+- Roads / junctions / traffic: `game/planner.js`: `CityPlan.roadPath`, `buildGraph`, `route`, `roadSurfaces`, `controlPlacement`, `waitAt`, `heightAt`; `game/world.js`: `drawRoads`, `drawControls`, `roadPreview`, input handlers; `game/sim.js`: `travelTimeline`, `timedPosition`, `lanePosition`. Fixed source geometry: `game/highway-data.js`.
+- Buildings / palette: `game/app.js`: `stock`, `drawPalette`, `choose`, `place`, `save`, Undo/startup load; `game/planner.js`: `place`, `buildingError`, `access`, `remove`, `seedArcade`; `game/world.js`: `drawBuilding`. Land/shoreline: `game/geography.js`; fixed landmarks: `game/planner.js` `landmarks`.
+- Residents: `game/sim.js`: `start`, `createHousehold`, `residentTick`, `addTrip`, `refreshNetwork`. Routine residents only; no autonomous resident model or mix slider.
+- Mayor (prompt, parser, fallback): `game/sim.js`: `decide`, `dispatch`, `outreach`, `record`; `game/app.js`: `start` supplies local qwen3:8b endpoint, `history`/`render` display decisions. `decide` still allows generic nonlocal endpoints, pauses simulation while pending, and omits satisfaction from the prompt.
+- Events: `game/incidents.js`: `CityIncidents.types`, `create`, `spawn`, `tick`, `respond`, `updateNetwork`; `game/planner.js`: `setClosures`, `roadBlocked`; `game/world.js`: `drawIncidents`; `game/app.js` Events tab handlers. Noon corruption remains in `game/sim.js` `tick`. The previously audited incident implementation was checkpointed in commit `0b9fc39`.
+- Satisfaction score + HUD: `game/sim.js` `getState` computes one overall score; `game/app.js` `render` writes `#happy` in `game/index.html`. District scores, score graph, mayor prompt feedback, and before/after action score logs are missing.
 
 ## Style
 - Low-poly diorama look, flat shading, simple low-poly cars.

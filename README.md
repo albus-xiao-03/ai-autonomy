@@ -4,7 +4,7 @@ An arcade city builder in the browser, using the Boston area from the shared ref
 
 ## Run locally
 
-    python3 -m http.server 8712 --bind 127.0.0.1 --directory dist
+    python3 -m http.server 8712 --bind 127.0.0.1 --directory game
 
 Open http://127.0.0.1:8712. Ollama serves the downloaded qwen3:8b model on localhost:11434. The mayor chooses district responses and generates public explanations through the native Ollama chat endpoint. The clock holds during requests. An identified civic controller handles model failures.
 
