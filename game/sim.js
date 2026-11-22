@@ -76,9 +76,11 @@ window.CitySim = (() => {
   }
   function lanePosition(p,id=0) {
     if(!p.direction)return p;
-    const road=CityPlan.plan.roads.map(r=>({r,p:CityPlan.projection(p,r.a,r.b)})).sort((a,b)=>CityPlan.dist(p,a.p)-CityPlan.dist(p,b.p))[0];
-    if(!road||CityPlan.dist(p,road.p)>4)return p;
-    const junctionDistance=Math.min(Infinity,...CityPlan.junctions().map(j=>CityPlan.dist(j,p)));
+    // Grid lookups: scanning every road and junction per car per frame is too slow on real Boston.
+    const found=CityPlan.closestRoad(p,4);
+    if(!found)return p;
+    const road={r:found.road,p:found.p};
+    const junctionDistance=CityPlan.junctionDistance(p);
     const taper=Math.min(1,junctionDistance/12);
     const lane=road.r.oneway?(road.r.type==='highway'?(id%2?1.75:-1.75):0):road.r.type==='oneway'?0:road.r.type==='highway'?(id%2?5.1:1.75):1.8;
     return {...p,x:p.x-p.direction.z*lane*taper,z:p.z+p.direction.x*lane*taper};

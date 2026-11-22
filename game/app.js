@@ -15,6 +15,7 @@
     const legacy=current?null:JSON.parse(localStorage.getItem('borough-levels-v1')||'null');
     const saved=current||legacy;
     CityPlan.seedArcade();
+    if(current?.version>=2){if(current.streets===false)CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>!r.real);else CityPlan.setRealStreets(current.removedStreets||[],current.modifiedStreets||[]);}
     if(Array.isArray(current?.removedCity)){const removable=new Set(CityPlan.city.filter(b=>!b.locked).map(b=>b.id));CityPlan.plan.removedCity=current.removedCity.filter(id=>removable.has(id));}
     if(legacy){
       const clear=(p,r)=>CityPlan.cityNear(p,r).filter(b=>!b.locked&&CityPlan.inCityRect(b,p,r)).forEach(b=>CityPlan.plan.removedCity.push(b.id));
@@ -31,7 +32,7 @@
     settings=localStorage.getItem('borough-mayor')||'local';if(settings==='qwen')settings='local';else if(!['local','baseline','api'].includes(settings))settings='baseline';$('mayorBrain').value=settings;$('autonomy').value=localStorage.getItem('borough-autonomy')??'30';$('autoIncidents').checked=localStorage.getItem('borough-auto-incidents')!=='false';
   }catch{CityPlan.seedArcade();}
   CityPlan.subdividePlayerRoads();CityPlan.changed();CityPlan.pruneControls();
-  function save(){try{localStorage.setItem('borough-boston-v1',JSON.stringify({version:1,roads:CityPlan.plan.roads,controls:CityPlan.plan.controls,buildings:CityPlan.plan.buildings.filter(b=>!b.area),removedCity:CityPlan.plan.removedCity}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
+  function save(){try{const snap=JSON.parse(CityPlan.snapshot());localStorage.setItem('borough-boston-v1',JSON.stringify({version:2,roads:snap.roads.filter(r=>!r.fixed),controls:snap.controls,buildings:snap.buildings.filter(b=>!b.area),removedCity:snap.removedCity,streets:snap.streets,removedStreets:snap.removedStreets,modifiedStreets:snap.modifiedStreets}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
   const world=CityWorld.mount($('world'),{
     onPoint:place,
     getTool:()=>({pan:!selection,dragRoad:!!CityPlan.widths[selection]&&$('roadMode').value==='drag'&&$('roadShape').value==='straight'&&$('roadAction').value==='build'}),
@@ -114,7 +115,7 @@
     }
     if(!topDownOnly())return;
     let error='';
-    const snapshot=JSON.stringify(CityPlan.plan);
+    const snapshot=CityPlan.snapshot();
     if(selection==='remove')error=CityPlan.remove(p);
     else if(CityPlan.controlTypes[selection]){error=CityPlan.control(p,selection);if(!error)notice(CityPlan.controlTypes[selection]+' installed.');}
     else if(selection==='reverse'){error=CityPlan.upgrade(p,'oneway',false,false,true);if(!error)notice('One-way direction reversed.');}
@@ -159,9 +160,14 @@
   }
   $('autoIncidents').onchange=()=>{sim?.setAutoIncidents($('autoIncidents').checked);try{localStorage.setItem('borough-auto-incidents',$('autoIncidents').checked);}catch{}};
   document.querySelectorAll('[data-control]').forEach(button=>button.onclick=()=>choose(button.dataset.control));
-  $('undo').onclick=()=>{const snapshot=undo.pop();if(!snapshot)return;const old=JSON.parse(snapshot);CityPlan.plan.buildings=old.buildings;CityPlan.plan.roads=old.roads;CityPlan.plan.controls=old.controls||[];CityPlan.plan.removedCity=old.removedCity||[];CityPlan.changed();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Last edit undone.');};
+  $('undo').onclick=()=>{const snapshot=undo.pop();if(!snapshot)return;CityPlan.restore(snapshot);roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Last edit undone.');};
   $('clearRoads').onclick=()=>{
-    undo.push(JSON.stringify(CityPlan.plan));CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed);CityPlan.plan.controls=[];CityPlan.changed();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Player roads cleared. Undo restores them.');
+    undo.push(CityPlan.snapshot());CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed||r.real);CityPlan.plan.controls=[];CityPlan.changed();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Player roads cleared. Real Boston streets stay. Undo restores them.');
+  };
+  // Back to real Boston: removes player roads and junction controls and restores every real street.
+  $('realStreets').onclick=()=>{
+    if(!topDownOnly())return;
+    undo.push(CityPlan.snapshot());CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed);CityPlan.plan.controls=[];CityPlan.setRealStreets();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Real Boston streets restored ('+CityPlan.realStreetCount+' street pieces). Your own roads were removed. Undo brings them back.');
   };
   function rotate(){rotation=(rotation+Math.PI/4)%(Math.PI*2);drawPalette();if(hoverPoint&&Object.hasOwn(stock,selection))hover(hoverPoint);}
   $('rotate').onclick=rotate;

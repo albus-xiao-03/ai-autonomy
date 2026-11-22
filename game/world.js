@@ -208,7 +208,27 @@
       scene.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(gold),new T.LineBasicMaterial({color:0xf1d181})));
       const dashed=new T.LineSegments(new T.BufferGeometry().setFromPoints(blue),new T.LineDashedMaterial({color:0x5fa8ff,dashSize:3,gapSize:2}));dashed.computeLineDistances();scene.add(dashed);
     }
+    // Real Boston streets: drawn once into the same tiles (asphalt and sidewalks always, markings when
+    // zoomed in). Bridges, tunnels, edited streets and player roads still go through drawRoads().
+    const streetIds=new Set();let streetGone=new Set();
+    function buildStreets(){
+      for(const r of CityPlan.plan.roads){
+        if(!r.real||r.bridge||r.tunnel)continue;
+        const length=CityPlan.dist(r.a,r.b),w=CityPlan.roadWidth(r),seg={x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,r:Math.atan2(r.b.z-r.a.z,r.b.x-r.a.x),id:r.pathId},t=cityTile(seg);
+        streetIds.add(r.pathId);
+        cpart(t,'mass',seg,'box',0,.38,0,length+.6,.12,w+2.4,0xb7b5a5);cpart(t,'mass',seg,'box',0,.52,0,length+.6,.12,w,0x59666a);
+        for(const end of [r.a,r.b]){const e={x:end.x,z:end.z,r:0,id:r.pathId};cpart(t,'mass',e,'round',0,.38,0,w/2+1.2,.12,w/2+1.2,0xb7b5a5);cpart(t,'mass',e,'round',0,.52,0,w/2,.12,w/2,0x59666a);}
+        if(r.type==='twoway'||r.type==='highway')for(let s=((2-(r.pathStart||0))%10+10)%10;s<length-1;s+=10){const d=Math.min(4,length-s);cpart(t,'detail',seg,'box',s+d/2-length/2,.6,0,d,.03,.2,r.type==='highway'?0xd4b957:0xe0ce9b);}
+        if(r.type==='oneway')for(let s=((10-(r.pathStart||0))%24+24)%24;s<length-1;s+=24){cpart(t,'detail',seg,'box',s-length/2,.6,0,3,.03,.25,0xf4e9c3);for(const sign of [-1,1])cpart(t,'detail',seg,'box',s-length/2+.9,.6,sign*.45,1.6,.03,.22,0xf4e9c3,sign*.65);}
+      }
+    }
+    function applyStreetRemoval(){
+      const present=new Set(CityPlan.plan.roads.filter(r=>r.real&&!r.bridge&&!r.tunnel&&CityPlan.streetOriginal(r)).map(r=>r.pathId)),touched=new Set();
+      for(const id of streetIds){const hide=!present.has(id);if(hide===streetGone.has(id))continue;for(const e of cityInstances.get(id)||[]){e.mesh.setMatrixAt(e.i,hide?cityHidden:e.matrix);touched.add(e.mesh);}if(hide)streetGone.add(id);else streetGone.delete(id);}
+      touched.forEach(m=>{m.instanceMatrix.needsUpdate=true;m.computeBoundingSphere();});
+    }
     function buildCity(){
+      buildStreets();
       for(const b of CityPlan.city){if(b.k==='unique'){if(b.fp)uniqueBuilding(b);}else cityBuilding(b);}
       for(const tile of cityTiles.values())for(const layer of ['mass','detail','fine']){
         const group=new T.Group();group.visible=layer==='mass';scene.add(group);tile.groups[layer]=group;
@@ -246,7 +266,7 @@
     let previewLine=null;
     const labelsLayer=document.createElement('div');labelsLayer.className='maplabels';container.append(labelsLayer);
     let labels=[];
-    function refreshLabels(){labelsLayer.replaceChildren();labels=[...latestIncidents.filter(i=>!['resolved','averted'].includes(i.status)).map(i=>({name:i.label.toUpperCase()+' · '+i.response,x:i.x,z:i.z,incident:true})),...CityPlan.landmarks,...CityPlan.highwayGates(),...CityPlan.highwayRamps(),...CityPlan.servicePoints(),...CityPlan.city.filter(b=>b.n&&(['fire','police'].includes(b.k)||/^(paul revere house|faneuil hall|old state house|museum of science|north station|old west church|the vilna shul|otis house museum|old north church)$/i.test(b.n))).map(b=>({name:b.n.replace('Boston Fire Department ','Fire · ').replace('Boston Police Department ','Police · '),x:b.x,z:b.z,height:b.h+12})),...CityPlan.plan.buildings.filter(b=>b.area),...CityPlan.plan.roads.filter(r=>(r.bridge||r.tunnel)&&(!r.pathId||r.pathStart===0)).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';if(l.incident)el.className='incidentLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,l.height??35,l.z)};});}
+    function refreshLabels(){labelsLayer.replaceChildren();labels=[...latestIncidents.filter(i=>!['resolved','averted'].includes(i.status)).map(i=>({name:i.label.toUpperCase()+' · '+i.response,x:i.x,z:i.z,incident:true})),...CityPlan.landmarks,...CityPlan.highwayGates(),...CityPlan.highwayRamps(),...CityPlan.servicePoints(),...CityPlan.city.filter(b=>b.n&&(['fire','police'].includes(b.k)||/^(paul revere house|faneuil hall|old state house|museum of science|north station|old west church|the vilna shul|otis house museum|old north church)$/i.test(b.n))).map(b=>({name:b.n.replace('Boston Fire Department ','Fire · ').replace('Boston Police Department ','Police · '),x:b.x,z:b.z,height:b.h+12})),...CityPlan.plan.buildings.filter(b=>b.area),...[...new Map(CityPlan.plan.roads.filter(r=>r.real&&r.bridge&&r.name&&r.pathStart===0&&!CityPlan.land({x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2})).map(r=>[r.name,{name:r.name.toUpperCase(),x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true}])).values()],...CityPlan.plan.roads.filter(r=>!r.real&&(r.bridge||r.tunnel)&&(!r.pathId||r.pathStart===0)).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';if(l.incident)el.className='incidentLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,l.height??35,l.z)};});}
     refreshLabels();
     let fog=null;
     function drawFog(){
@@ -315,7 +335,7 @@
     }
     function drawRoads() {
       disposeGroup(roadsGroup);const bridgeSurfaces=[];
-      for(const r of CityPlan.plan.roads){
+      for(const r of CityPlan.plan.roads.filter(r=>!r.real||r.bridge||r.tunnel||!CityPlan.streetOriginal(r))){
         const length=CityPlan.dist(r.a,r.b),x=(r.a.x+r.b.x)/2,z=(r.a.z+r.b.z)/2;
         const angle=-Math.atan2(r.b.z-r.a.z,r.b.x-r.a.x),w=CityPlan.roadWidth(r);
         if(r.bridge){
@@ -534,7 +554,7 @@
             part('round',c.x,.95,c.z,c.radius,.3,c.radius,0xd9c27a);box(c.x,4,c.z,.6,6,.6,0x4a4f4a);box(c.x,6.8,c.z,6,1.8,.3,0xf1d181,-(c.rotation||0));
           }else{origin={...c,damage:damageById[c.id]||0};modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,c);origin=null;modelScale=1;}
         }
-        buildingMesh=flush();applyCityRemoval();drawRoads();lastRevision=CityPlan.revision;lastDamageKey=damageKey;
+        buildingMesh=flush();applyCityRemoval();applyStreetRemoval();drawRoads();lastRevision=CityPlan.revision;lastDamageKey=damageKey;
       }
       if(agents.length!==agentCount){
         for(const mesh of [people,roofs,wheels])if(mesh){scene.remove(mesh);mesh.dispose();}

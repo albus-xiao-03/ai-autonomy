@@ -39,6 +39,20 @@ window.CityPlan = (() => {
   function cityBlocks(p,radius){return cityNear(p,radius).some(b=>inCityRect(b,p,radius*.7));}
   function cityCrossed(a,b,width){const n=Math.ceil(dist(a,b)/4);for(let i=0;i<=n;i++){const p={x:a.x+(b.x-a.x)*i/n,z:a.z+(b.z-a.z)*i/n};if(cityNear(p,width).some(c=>inCityRect(c,p,width/2-.5)))return true;}return false;}
   const stages=[BOUNDS];
+  // Real Boston streets (OpenStreetMap), split at intersections. Players can bulldoze, upgrade or
+  // restore them. I-93 stays in highway-data.js as fixed roads.
+  const realStreetRoads=(()=>{const out=[];for(const piece of (window.BOSTON_STREETS?.pieces||[])){const span=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z),pts=piece.p.map(([x,z])=>({x,z})),total=pts.slice(1).reduce((sum,q,i)=>sum+span(pts[i],q),0);let offset=0;for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],length=span(a,b);if(length<.05)continue;out.push({id:'osm-'+piece.id+'-'+i,pathId:'osm-'+piece.id,pathStart:offset,pathEnd:offset+length,pathLength:total,a,b,type:piece.t,width:piece.w,oneway:piece.t==='oneway',bridge:!!piece.b,tunnel:!!piece.u,real:true,name:piece.n||''});offset+=length;}}return out;})();
+  const realStreetById=new Map(realStreetRoads.map(r=>[r.id,r])),realPathIds=[...new Set(realStreetRoads.map(r=>r.pathId))];
+  function setRealStreets(removedPaths=[],modified=[]){const gone=new Set(removedPaths),mods=new Map(modified.map(r=>[r.id,r]));plan.roads=plan.roads.filter(r=>!r.real).concat(realStreetRoads.filter(r=>!gone.has(r.pathId)).map(r=>mods.get(r.id)||{...r}));changed();}
+  function removedRealStreets(){const present=new Set(plan.roads.filter(r=>r.real).map(r=>r.pathId));return realPathIds.filter(id=>!present.has(id));}
+  function modifiedRealStreets(){return plan.roads.filter(r=>{if(!r.real)return false;const o=realStreetById.get(r.id);return !o||o.type!==r.type||!!o.bridge!==!!r.bridge||!!o.tunnel!==!!r.tunnel||o.a.x!==r.a.x||o.a.z!==r.a.z;});}
+  // Spatial grids keep routing, junctions and lane lookups fast with thousands of road segments.
+  const GRID=60;let roadGridCache=null,junctionGridCache=null;
+  function cellsFor(minX,maxX,minZ,maxZ,visit){for(let gx=Math.floor(minX/GRID);gx<=Math.floor(maxX/GRID);gx++)for(let gz=Math.floor(minZ/GRID);gz<=Math.floor(maxZ/GRID);gz++)visit(gx+','+gz);}
+  function roadGrid(){if(roadGridCache?.revision===revision&&roadGridCache.count===plan.roads.length)return roadGridCache.grid;const grid=new Map();for(const r of plan.roads){const pad=roadWidth(r)/2+1;cellsFor(Math.min(r.a.x,r.b.x)-pad,Math.max(r.a.x,r.b.x)+pad,Math.min(r.a.z,r.b.z)-pad,Math.max(r.a.z,r.b.z)+pad,k=>{if(!grid.has(k))grid.set(k,[]);grid.get(k).push(r);});}roadGridCache={revision,count:plan.roads.length,grid};return grid;}
+  function roadsNear(p,radius=0){const grid=roadGrid(),out=new Set();cellsFor(p.x-radius,p.x+radius,p.z-radius,p.z+radius,k=>{for(const r of grid.get(k)||[])out.add(r);});return [...out];}
+  function closestRoad(p,maxDistance){let best=null,bestDistance=maxDistance;for(const r of roadsNear(p,maxDistance)){const d=dist(p,projection(p,r.a,r.b));if(d<=bestDistance){best=r;bestDistance=d;}}return best?{road:best,p:projection(p,best.a,best.b)}:null;}
+  function junctionDistance(p,maxDistance=24){if(junctionGridCache?.revision!==revision){const grid=new Map();for(const j of junctions())cellsFor(j.x,j.x,j.z,j.z,k=>{if(!grid.has(k))grid.set(k,[]);grid.get(k).push(j);});junctionGridCache={revision,grid};}let best=Infinity;cellsFor(p.x-maxDistance,p.x+maxDistance,p.z-maxDistance,p.z+maxDistance,k=>{for(const j of junctionGridCache.grid.get(k)||[])best=Math.min(best,dist(p,j));});return best;}
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
   function inside(p,poly) {
     let yes=false;
@@ -142,7 +156,7 @@ window.CityPlan = (() => {
     let split=false;
     plan.roads=plan.roads.flatMap(road=>{
       const length=dist(road.a,road.b);
-      if(road.fixed||length<=20)return [road];
+      if(road.fixed||road.real||length<=20)return [road];
       split=true;
       const count=Math.ceil(length/20),pathId=road.pathId||'road-'+road.id;
       return Array.from({length:count},(_,i)=>{
@@ -173,6 +187,7 @@ window.CityPlan = (() => {
       return next;
     });
     for(const r of updated){
+      if(r.real)continue; // real streets already exist in Boston; only the new type is applied
       const error=roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId);
       if(error){plan.roads=previous;return error;}
     }
@@ -254,7 +269,11 @@ window.CityPlan = (() => {
   function buildGraph() {
     const cuts=plan.roads.map(()=>[0,1]);
     // Split every crossing, including T junctions, before adding directed edges.
-    for(let i=0;i<plan.roads.length;i++)for(let j=i+1;j<plan.roads.length;j++){
+    // Only segments sharing a grid cell can touch, so test those pairs instead of all pairs.
+    const cellIndex=new Map(),tested=new Set(),count=plan.roads.length,candidatePairs=[];
+    plan.roads.forEach((r,i)=>cellsFor(Math.min(r.a.x,r.b.x)-.1,Math.max(r.a.x,r.b.x)+.1,Math.min(r.a.z,r.b.z)-.1,Math.max(r.a.z,r.b.z)+.1,k=>{if(!cellIndex.has(k))cellIndex.set(k,[]);cellIndex.get(k).push(i);}));
+    for(const list of cellIndex.values())for(let x=0;x<list.length;x++)for(let y=x+1;y<list.length;y++){const i=Math.min(list[x],list[y]),j=Math.max(list[x],list[y]),key=i*count+j;if(!tested.has(key)){tested.add(key);candidatePairs.push([i,j]);}}
+    for(const [i,j] of candidatePairs){
       const a=plan.roads[i],b=plan.roads[j],u={x:a.b.x-a.a.x,z:a.b.z-a.a.z},v={x:b.b.x-b.a.x,z:b.b.z-b.a.z};
       const cross=(p,q)=>p.x*q.z-p.z*q.x,den=cross(u,v),w={x:b.a.x-a.a.x,z:b.a.z-a.a.z};
       if(Math.abs(den)>.0001) {
@@ -278,7 +297,8 @@ window.CityPlan = (() => {
         edges.push({a,b,type:r.oneway?'oneway':r.type,weight,road:r});
       }
     });
-    graph={nodes:[...nodes.values()],edges};return graph;
+    const edgeGrid=new Map();for(const e of edges)cellsFor(Math.min(e.a.x,e.b.x),Math.max(e.a.x,e.b.x),Math.min(e.a.z,e.b.z),Math.max(e.a.z,e.b.z),k=>{if(!edgeGrid.has(k))edgeGrid.set(k,[]);edgeGrid.get(k).push(e);});
+    graph={nodes:[...nodes.values()],edges,edgeGrid,routes:new Map()};return graph;
   }
   function junctions() {
     if(junctionCache)return junctionCache;
@@ -314,7 +334,7 @@ window.CityPlan = (() => {
   }
   function roadSurfaces(margin=0) {
     const shapes=[];
-    for(const road of plan.roads.filter(r=>!r.bridge&&!r.tunnel)){
+    for(const road of plan.roads.filter(r=>!r.bridge&&!r.tunnel&&!r.real)){
       const length=dist(road.a,road.b),nx=-(road.b.z-road.a.z)/length,nz=(road.b.x-road.a.x)/length,radius=roadWidth(road)/2+margin;
       const p=(base,sign)=>[base.x+nx*radius*sign,base.z+nz*radius*sign];
       const a=p(road.a,1),b=p(road.b,1),c=p(road.b,-1),d=p(road.a,-1);
@@ -367,19 +387,29 @@ window.CityPlan = (() => {
       const connection=building?access(building):null;
       if(building&&!connection)return null;
       const target=connection?.p||p;
-      const edge=g.edges.map(e=>({...e,p:projection(target,e.a,e.b)})).sort((x,y)=>(dist(target,x.p)+Math.abs((target.height||0)-heightAt(x.p,x.road))*2)-(dist(target,y.p)+Math.abs((target.height||0)-heightAt(y.p,y.road))*2))[0];
+      let nearby=[];for(const radius of [30,110]){const found=new Set();cellsFor(target.x-radius,target.x+radius,target.z-radius,target.z+radius,k=>{for(const e of g.edgeGrid.get(k)||[])found.add(e);});nearby=[...found];if(nearby.length)break;}
+      if(!nearby.length)nearby=g.edges;
+      const edge=nearby.map(e=>({...e,p:projection(target,e.a,e.b)})).sort((x,y)=>(dist(target,x.p)+Math.abs((target.height||0)-heightAt(x.p,x.road))*2)-(dist(target,y.p)+Math.abs((target.height||0)-heightAt(y.p,y.road))*2))[0];
       return {...edge,entrance:connection?.entrance};
     };
+    const cacheKey=[a.x,a.z,a.height||0,b.x,b.z,b.height||0].map(v=>(+v).toFixed(2)).join(',');
+    if(g.routes.has(cacheKey)){const cached=g.routes.get(cacheKey);return cached&&cached.map(q=>({...q}));}
+    const result=routeUncached(g,a,b,attach);g.routes.set(cacheKey,result);return result&&result.map(q=>({...q}));
+  }
+  function routeUncached(g,a,b,attach) {
     const start=attach(a),end=attach(b);
     if(!start||!end)return null;
     if(dist(a,start.p)>100||dist(b,end.p)>100)return null;
-    const values=new Map(),previous=new Map(),open=new Set();
-    const seed=(n,c)=>{if(c<(values.get(n)??Infinity)){values.set(n,c);open.add(n);}};
+    // Dijkstra with a binary heap (same result as before, much faster on the real street network).
+    const values=new Map(),previous=new Map(),heap=[];
+    const push=(c,n)=>{heap.push([c,n]);let i=heap.length-1;while(i>0){const parent=(i-1)>>1;if(heap[parent][0]<=heap[i][0])break;[heap[parent],heap[i]]=[heap[i],heap[parent]];i=parent;}};
+    const pop=()=>{const top=heap[0],last=heap.pop();if(heap.length){heap[0]=last;let i=0;for(;;){const l=2*i+1,r=l+1;let m=i;if(l<heap.length&&heap[l][0]<heap[m][0])m=l;if(r<heap.length&&heap[r][0]<heap[m][0])m=r;if(m===i)break;[heap[m],heap[i]]=[heap[i],heap[m]];i=m;}}return top;};
+    const seed=(n,c)=>{if(c<(values.get(n)??Infinity)){values.set(n,c);push(c,n);}};
     seed(start.b,dist(start.p,start.b));if(start.type!=='oneway')seed(start.a,dist(start.p,start.a));
-    while(open.size){
-      const n=[...open].sort((x,y)=>values.get(x)-values.get(y))[0];open.delete(n);
-      for(const e of n.edges)if(values.get(n)+e.weight<(values.get(e.to)??Infinity)){
-        values.set(e.to,values.get(n)+e.weight);previous.set(e.to,n);open.add(e.to);
+    while(heap.length){
+      const [c,n]=pop();if(c>values.get(n))continue;
+      for(const e of n.edges)if(c+e.weight<(values.get(e.to)??Infinity)){
+        values.set(e.to,c+e.weight);previous.set(e.to,n);push(c+e.weight,e.to);
       }
     }
     const choices=[end.a];if(end.type!=='oneway')choices.push(end.b);
@@ -393,7 +423,7 @@ window.CityPlan = (() => {
     if(!best)return null;
     const graded=[{...best[0],height:best[0].height||0}];
     for(let i=1;i<best.length;i++){
-      const a=best[i-1],b=best[i],road=plan.roads.find(r=>dist(a,projection(a,r.a,r.b))<.05&&dist(b,projection(b,r.a,r.b))<.05);
+      const a=best[i-1],b=best[i],road=roadsNear(a,1).find(r=>dist(a,projection(a,r.a,r.b))<.05&&dist(b,projection(b,r.a,r.b))<.05);
       const count=road&&(road.bridge||road.tunnel)?Math.max(1,Math.ceil(dist(a,b)/8)):1;
       for(let j=1;j<=count;j++){const t=j/count,p={x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t};graded.push({...p,height:road?heightAt(p,road):b.height||0});}
     }
@@ -415,14 +445,31 @@ window.CityPlan = (() => {
       ];
       const playerBuildings=plan.buildings.filter(b=>!b.area);
       plan.buildings=areas.filter(a=>{const p=point([a[3],a[4]]);return p.x-20>BOUNDS.minX&&p.x+20<BOUNDS.maxX&&p.z-20>BOUNDS.minZ&&p.z+20<BOUNDS.maxZ;}).map(([id,label,type,lon,lat,rotation])=>({id,label,type,...point([lon,lat]),rotation,radius:14,area:true}));
+      // Snap each neighbourhood hub to face its nearest real ground street (old arcade spots were not on streets).
+      for(const hub of plan.buildings.filter(b=>b.area)){
+        let best=null;for(const r of realStreetRoads){if(r.bridge||r.tunnel)continue;const q=projection(hub,r.a,r.b),d=dist(hub,q);if(d<150&&(!best||d<best.d))best={r,q,d};}
+        if(!best)continue;
+        const length=dist(best.r.a,best.r.b),normal={x:-(best.r.b.z-best.r.a.z)/length,z:(best.r.b.x-best.r.a.x)/length};
+        const away=best.d>.5?{x:(hub.x-best.q.x)/best.d,z:(hub.z-best.q.z)/best.d}:normal;
+        for(const dir of [away,{x:-away.x,z:-away.z}]){
+          const offset=hub.radius+roadWidth(best.r)/2+6,center={x:best.q.x+dir.x*offset,z:best.q.z+dir.z*offset};
+          if(!land(center)||cityNear(center,hub.radius).some(c=>c.locked&&inCityRect(c,center,hub.radius)))continue;
+          hub.x=center.x;hub.z=center.z;hub.rotation=Math.atan2(-dir.x,-dir.z);break;
+        }
+      }
       // Each neighbourhood is a small connection hub; clear the unlocked buildings under the hub and its entrance.
       hubCleared=new Set(city.filter(c=>!c.locked&&plan.buildings.some(a=>a.area&&(inCityRect(c,a,a.radius)||inCityRect(c,{x:a.x+Math.sin(a.rotation)*a.radius*1.6,z:a.z+Math.cos(a.rotation)*a.radius*1.6},6)))).map(c=>c.id));
       plan.buildings.push(...playerBuildings);
       if(!plan.roads.some(r=>r.fixed&&String(r.pathId).startsWith('i93-')))highwaySeed();
+      if(!plan.roads.some(r=>r.real))setRealStreets();
       changed();
     },
     get activeBounds(){return BOUNDS;},
-    city,cityAt,cityNear,inCityRect,
+    city,cityAt,cityNear,inCityRect,roadsNear,closestRoad,junctionDistance,
+    realStreetCount:realPathIds.length,streetOriginal:r=>{const o=r.real&&realStreetById.get(r.id);return !!o&&o.type===r.type&&!!o.bridge===!!r.bridge&&!!o.tunnel===!!r.tunnel&&o.a.x===r.a.x&&o.a.z===r.a.z;},setRealStreets,removedRealStreets,modifiedRealStreets,
+    // Compact plan snapshots: real streets are stored as removals/edits, not as thousands of roads.
+    snapshot(){return JSON.stringify({buildings:plan.buildings,roads:plan.roads.filter(r=>!r.real),controls:plan.controls,removedCity:plan.removedCity,streets:plan.roads.some(r=>r.real)||!realPathIds.length,removedStreets:removedRealStreets(),modifiedStreets:modifiedRealStreets()});},
+    restore(text){const saved=typeof text==='string'?JSON.parse(text):text;plan.buildings=saved.buildings||[];plan.controls=saved.controls||[];plan.removedCity=saved.removedCity||[];plan.roads=(saved.roads||[]).filter(r=>!r.real);if(saved.streets!==false)setRealStreets(saved.removedStreets||[],saved.modifiedStreets||[]);changed();},
     get removedCity(){return removed();},
     cityPopulation(){const gone=new Set(plan.removedCity);return city.reduce((n,b)=>n+(b.k==='res'&&!gone.has(b.id)?b.p||0:0),0);},
     get revision(){return revision;},changed,
