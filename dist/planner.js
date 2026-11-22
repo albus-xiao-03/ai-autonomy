@@ -45,11 +45,11 @@ window.CityPlan = (() => {
     if(plan.roads.some(r=>dist(p,projection(p,r.a,r.b))<widths[r.type]/2+radius))return 'This position overlaps a road.';
     return '';
   }
-  function roadError(a,b,type,bridge=false,tunnel=false) {
+  function roadError(a,b,type,bridge=false,tunnel=false,minimumLength=10,checkEndpoints=true) {
     const bounds=stages[level-1];if([a,b].some(p=>p.x<bounds.minX||p.x>bounds.maxX||p.z<bounds.minZ||p.z>bounds.maxZ))return 'Complete this level to unlock that part of Boston.';
-    if(!land(a)||!land(b))return 'Both road ends must be on dry land.';
+    if(checkEndpoints&&(!land(a)||!land(b)))return 'Both road ends must be on dry land.';
     let crossesWater=false;
-    if(dist(a,b)<10)return 'Draw a longer road.';
+    if(dist(a,b)<minimumLength)return 'Draw a longer road.';
     for(let i=0,n=Math.ceil(dist(a,b)/3);i<=n;i++){
       const p={x:a.x+(b.x-a.x)*i/n,z:a.z+(b.z-a.z)*i/n};
       if(!land(p)){crossesWater=true;if(!bridge&&!tunnel)return 'Choose bridge or tunnel mode to cross water.';}
@@ -60,19 +60,91 @@ window.CityPlan = (() => {
     if(plan.roads.some(r=>!!r.bridge===bridge&&!!r.tunnel===tunnel&&dist(a,projection(a,r.a,r.b))<.5&&dist(b,projection(b,r.a,r.b))<.5))return 'A road already follows this section.';
     return '';
   }
-  function snap(p) {
-    let best=p,limit=12;
-    for(const b of plan.buildings){if(!b.area)continue;const p2={x:b.x+Math.sin(b.rotation||0)*b.radius,z:b.z+Math.cos(b.rotation||0)*b.radius};if(dist(p,p2)<12)return p2;}
-    for(const r of plan.roads) {
-      const q=projection(p,r.a,r.b),d=dist(p,q);
-      if(d<limit&&Math.abs(heightAt(q,r))<.75){best=q;limit=d;}
-      for(const end of [r.a,r.b])if(dist(p,end)<12){best=end;limit=0;}
+  function snap(p,tolerance=12) {
+    const nodes=[],edges=[];
+    for(const b of plan.buildings){
+      if(b.area)nodes.push({x:b.x+Math.sin(b.rotation||0)*b.radius,z:b.z+Math.cos(b.rotation||0)*b.radius});
     }
-    return {x:best.x,z:best.z};
+    for(const road of plan.roads){
+      if(!road.pathId||road.pathStart===0)nodes.push(road.a);
+      if(!road.pathId||Math.abs(road.pathEnd-road.pathLength)<.01)nodes.push(road.b);
+      const q=projection(p,road.a,road.b);
+      if(Math.abs(heightAt(q,road))<.75)edges.push(q);
+    }
+    const closest=list=>list.filter(q=>dist(p,q)<=tolerance).sort((a,b)=>dist(p,a)-dist(p,b))[0];
+    const chosen=closest(nodes)||closest(edges)||p;
+    return {x:chosen.x,z:chosen.z};
+  }
+  function draftPoint(p,start,enabled=true,tolerance=12) {
+    if(!enabled)return {x:p.x,z:p.z};
+    const anchor=snap(p,tolerance);
+    if(dist(anchor,p)>.001||!start)return anchor;
+    const angle=Math.round(Math.atan2(p.z-start.z,p.x-start.x)/(Math.PI/12))*Math.PI/12;
+    const length=dist(start,p);
+    return {x:start.x+Math.cos(angle)*length,z:start.z+Math.sin(angle)*length};
+  }
+  function curve(a,bend,b) {
+    const count=Math.max(6,Math.min(100,Math.ceil((dist(a,bend)+dist(bend,b))/12)));
+    return Array.from({length:count+1},(_,i)=>{
+      const t=i/count,u=1-t;
+      return {x:u*u*a.x+2*u*t*bend.x+t*t*b.x,z:u*u*a.z+2*u*t*bend.z+t*t*b.z};
+    });
+  }
+  function pathError(points,type,bridge=false,tunnel=false) {
+    if(!land(points[0])||!land(points.at(-1)))return 'Both road ends must be on dry land.';
+    const length=points.slice(1).reduce((sum,p,i)=>sum+dist(points[i],p),0);
+    if(length<10)return 'Draw a road at least 10 meters long.';
+    for(let i=1;i<points.length;i++){
+      if(dist(points[i-1],points[i])<.01)continue;
+      const error=roadError(points[i-1],points[i],type,bridge,tunnel,.01,false);
+      if(error)return error;
+    }
+    return '';
+  }
+  function roadPath(points,type,bridge=false,tunnel=false) {
+    const error=pathError(points,type,bridge,tunnel);
+    if(error)return error;
+    const pathId=Date.now()+Math.random();
+    const pathLength=points.slice(1).reduce((sum,p,i)=>sum+dist(points[i],p),0);
+    let offset=0;
+    for(let i=1;i<points.length;i++){
+      const length=dist(points[i-1],points[i]);if(length<.01)continue;
+      plan.roads.push({id:Date.now()+Math.random(),pathId,pathStart:offset,pathEnd:offset+length,pathLength,a:{...points[i-1]},b:{...points[i]},type,bridge,tunnel});
+      offset+=length;
+    }
+    changed();return '';
+  }
+  function nearestRoad(p,tolerance=6) {
+    return plan.roads.filter(r=>dist(p,projection(p,r.a,r.b))<=widths[r.type]/2+tolerance).sort((a,b)=>dist(p,projection(p,a.a,a.b))-dist(p,projection(p,b.a,b.b)))[0]||null;
+  }
+  function upgrade(p,type,bridge=false,tunnel=false,reverse=false) {
+    const selected=nearestRoad(p);
+    if(!selected)return 'Choose an existing road.';
+    if(selected.fixed)return 'The entry highway stays fixed. Upgrade your local roads.';
+    if(reverse&&selected.type!=='oneway')return 'Choose a one-way road to reverse.';
+    const group=plan.roads.filter(r=>selected.pathId?r.pathId===selected.pathId:r===selected);
+    const previous=plan.roads;
+    plan.roads=previous.filter(r=>!group.includes(r));
+    const updated=group.map(r=>{
+      const next={...r,type:reverse?r.type:type,bridge:reverse?!!r.bridge:bridge,tunnel:reverse?!!r.tunnel:tunnel};
+      if(reverse){
+        if(r.type!=='oneway')return next;
+        next.a=r.b;next.b=r.a;
+        if(r.pathId){next.pathStart=r.pathLength-r.pathEnd;next.pathEnd=r.pathLength-r.pathStart;}
+      }
+      return next;
+    });
+    for(const r of updated){
+      const error=roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId);
+      if(error){plan.roads=previous;return error;}
+    }
+    plan.roads=previous.map(r=>group.includes(r)?updated[group.indexOf(r)]:r);
+    changed();pruneControls();return '';
   }
   function heightAt(p,r) {
     const q=projection(p,r.a,r.b);
-    const rise=Math.min(12,dist(r.a,q)/3,dist(r.b,q)/3);return r.tunnel?-rise:r.bridge?rise:0;
+    const along=(r.pathStart||0)+dist(r.a,q),length=r.pathLength||dist(r.a,r.b);
+    const rise=Math.min(12,along/3,(length-along)/3);return r.tunnel?-rise:r.bridge?rise:0;
   }
   function buildGraph() {
     const cuts=plan.roads.map(()=>[0,1]);
@@ -112,13 +184,22 @@ window.CityPlan = (() => {
       const junction=points.get(node.key);
       if(!junction.arms.some(arm=>Math.abs(arm.x-direction.x)<.001&&Math.abs(arm.z-direction.z)<.001))junction.arms.push({...direction,road:edge.road});
     }
-    junctionCache=[...points.values()].filter(j=>j.arms.length>=2);return junctionCache;
+    junctionCache=[...points.values()].filter(j=>j.arms.length>=2&&!(j.arms.length===2&&j.arms[0].road.pathId&&j.arms[0].road.pathId===j.arms[1].road.pathId));return junctionCache;
+  }
+  function incomingArm(arm) {
+    if(arm.road.type!=='oneway')return true;
+    const road=arm.road,length=dist(road.a,road.b);
+    return ((road.b.x-road.a.x)*arm.x+(road.b.z-road.a.z)*arm.z)/length<-.9;
+  }
+  function pruneControls(){
+    const live=junctions();
+    plan.controls=plan.controls.filter(control=>live.some(j=>dist(control,j)<.1&&(!control.approach||j.arms.some(arm=>incomingArm(arm)&&arm.x*control.approach.x+arm.z*control.approach.z>.95))));
   }
   function controlPlacement(p,kind) {
     const junction=junctions().filter(j=>dist(p,j)<(kind==='signal'?28:65)).sort((a,b)=>dist(p,a)-dist(p,b))[0];
     if(!junction)return null;
     if(kind==='signal')return {x:junction.x,z:junction.z,approach:null};
-    const arm=junction.arms.map(arm=>{
+    const arm=junction.arms.filter(incomingArm).map(arm=>{
       const along=(p.x-junction.x)*arm.x+(p.z-junction.z)*arm.z;
       const side=Math.abs((p.x-junction.x)*arm.z-(p.z-junction.z)*arm.x);
       return {arm,along,side};
@@ -180,7 +261,7 @@ window.CityPlan = (() => {
       const connection=building?access(building):null;
       if(building&&!connection)return null;
       const target=connection?.p||p;
-      const edge=g.edges.map(e=>({...e,p:projection(target,e.a,e.b)})).sort((x,y)=>dist(target,x.p)-dist(target,y.p))[0];
+      const edge=g.edges.map(e=>({...e,p:projection(target,e.a,e.b)})).sort((x,y)=>(dist(target,x.p)+Math.abs((target.height||0)-heightAt(x.p,x.road))*2)-(dist(target,y.p)+Math.abs((target.height||0)-heightAt(y.p,y.road))*2))[0];
       return {...edge,entrance:connection?.entrance};
     };
     const start=attach(a),end=attach(b);
@@ -212,7 +293,7 @@ window.CityPlan = (() => {
     }
     return graded;
   }
-  return {plan,polygons,holes,bounds:geo.bounds,scale:geo.scale,buildingScale,access,landmarks,widths,land,dist,projection,buildingError,roadError,snap,route,junctions,controlTypes,controlPlacement,roadSurfaces,signalState,waitAt,
+  return {plan,polygons,holes,bounds:geo.bounds,scale:geo.scale,buildingScale,access,landmarks,widths,land,dist,projection,buildingError,roadError,snap,draftPoint,curve,pathError,roadPath,nearestRoad,upgrade,route,junctions,controlTypes,controlPlacement,roadSurfaces,signalState,waitAt,pruneControls,
     heightAt,
     elevationAt(p){for(const r of plan.roads)if((r.bridge||r.tunnel)&&dist(p,projection(p,r.a,r.b))<widths[r.type])return this.heightAt(p,r);for(const b of plan.buildings){const c=access(b);if(c?.road.bridge){const q=projection(p,c.entrance,c.p);if(dist(p,q)<3)return this.heightAt(c.p,c.road)*q.t;}}return 0;},
     seedArcade(next=1){
@@ -246,8 +327,8 @@ window.CityPlan = (() => {
     },
     place(p,type,rotation=0){const error=buildingError({...p,type});if(error)return error;plan.buildings.push({id:Date.now()+Math.random(),x:p.x,z:p.z,type,rotation});changed();return '';},
     road(a,b,type,bridge=false,tunnel=false){a=snap(a);b=snap(b);const error=roadError(a,b,type,bridge,tunnel);if(error)return error;plan.roads.push({id:Date.now()+Math.random(),a,b,type,bridge,tunnel});changed();return '';},
-    remove(p){const control=plan.controls.find(c=>dist(p,{x:c.x+(c.approach?.x||0)*20,z:c.z+(c.approach?.z||0)*20})<9);if(control){plan.controls.splice(plan.controls.indexOf(control),1);changed();return '';}const b=plan.buildings.find(b=>dist(b,p)<(b.radius||buildingScale(b.type)*4.2));if(b?.area)return 'This district is fixed. Connect its gold access point with roads.';if(b)plan.buildings.splice(plan.buildings.indexOf(b),1);else{const r=plan.roads.find(r=>dist(p,projection(p,r.a,r.b))<widths[r.type]/2+1);if(!r)return 'Select a building or road to remove.';if(r.fixed)return 'The through highway is the fixed entry route. Connect local roads to it.';plan.roads.splice(plan.roads.indexOf(r),1);}changed();const live=junctions();plan.controls=plan.controls.filter(c=>live.some(j=>dist(c,j)<.1));return '';},
-    load(saved){if(saved?.version!==2)return;for(const b of saved.buildings||[])if(['residential','office','shop','social','park','parking'].includes(b.type)&&Number.isFinite(b.rotation)&&!buildingError(b))plan.buildings.push(b);for(const r of saved.roads||[])if(widths[r.type]&&r.a&&r.b&&!roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel))plan.roads.push(r);changed();}
+    remove(p){const control=plan.controls.find(c=>dist(p,{x:c.x+(c.approach?.x||0)*20,z:c.z+(c.approach?.z||0)*20})<9);if(control){plan.controls.splice(plan.controls.indexOf(control),1);changed();return '';}const b=plan.buildings.find(b=>dist(b,p)<(b.radius||buildingScale(b.type)*4.2));if(b?.area)return 'This district is fixed. Connect its gold access point with roads.';if(b)plan.buildings.splice(plan.buildings.indexOf(b),1);else{const r=plan.roads.find(r=>dist(p,projection(p,r.a,r.b))<widths[r.type]/2+1);if(!r)return 'Select a building or road to remove.';if(r.fixed)return 'The through highway is the fixed entry route. Connect local roads to it.';plan.roads=plan.roads.filter(road=>r.pathId?road.pathId!==r.pathId:road!==r);}changed();const live=junctions();plan.controls=plan.controls.filter(c=>live.some(j=>dist(c,j)<.1));return '';},
+    load(saved){if(saved?.version!==2)return;for(const b of saved.buildings||[])if(['residential','office','shop','social','park','parking'].includes(b.type)&&Number.isFinite(b.rotation)&&!buildingError(b))plan.buildings.push(b);for(const r of saved.roads||[])if(widths[r.type]&&r.a&&r.b&&!roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId))plan.roads.push(r);changed();}
   };
 })();
 window.CITY_LOTS=[];

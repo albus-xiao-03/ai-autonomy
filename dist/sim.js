@@ -155,6 +155,48 @@ window.CitySim = (() => {
       p.activity = 'commuting';
     }
 
+    function refreshNetwork(){
+      if(disposed||ended)return;
+      for(const p of residents){
+        let oldTrip=p.trip;
+        if(oldTrip&&minute+elapsed-oldTrip.start>=oldTrip.duration){
+          p.place=oldTrip.to;p.activity=oldTrip.activity;p.routeMinutes+=oldTrip.duration;
+          p.jobsDone+=oldTrip.activity==='work'?1:0;p.visits+=oldTrip.activity==='social'?1:0;
+          p.trip=null;oldTrip=null;
+        }
+        if(oldTrip){
+          const age=minute+elapsed-oldTrip.start;
+          let offset=0;
+          for(const leg of oldTrip.legs){
+            if(age<=leg.end){p.place=timedPosition(leg.path,leg.timeline,age-offset);break;}
+            offset=leg.end;
+          }
+          p.trip=null;
+        }
+        const reachable=workplaces.filter(work=>route(p.home,work)&&route(work,p.home));
+        p.work=reachable.find(work=>work.id===p.work?.id)||reachable[p.id%Math.max(1,reachable.length)]||null;
+        const venues=leisure.filter(venue=>route(p.work||p.home,venue)&&route(venue,p.home));
+        p.venue=venues[p.id%Math.max(1,venues.length)]||null;
+        if(oldTrip){
+          const destination=oldTrip.to;
+          const road=CityPlan.nearestRoad(p.place,2);
+          const onStreet=road&&Math.abs(CityPlan.heightAt(p.place,road)-(p.place.height||0))<1;
+          const atBuilding=CityPlan.plan.buildings.some(building=>CityPlan.dist(p.place,building)<(building.radius||25)&&CityPlan.access(building));
+          if((onStreet||atBuilding)&&route(p.place,destination))addTrip(p,destination,oldTrip.activity);
+          else{p.activity='stranded';p.strandedDestination={to:destination,activity:oldTrip.activity};}
+        }else if(p.activity==='stranded'){
+          const destination=p.strandedDestination?.to||(minute<p.leave?p.work:p.home);
+          if(destination&&route(p.place,destination))addTrip(p,destination,p.strandedDestination?.activity||(minute<p.leave?'work':'home'));
+        }
+      }
+      if(service){
+        const current=position(service.path,(minute+elapsed-service.start)/Math.max(5,service.path.length/440));
+        const replacement=route(current,focal);
+        if(replacement){service.path=replacement;service.start=minute+elapsed;}
+        else{service.log.outcome='The road edit interrupted this dispatch.';service=null;}
+      }
+    }
+
     function residentTick(p) {
       if (p.trip) {
         const t = p.trip;
@@ -354,7 +396,7 @@ window.CitySim = (() => {
         authority:round(districts.reduce((sum,d) => sum+d.authority,0)/Math.max(1,districts.length)),
         events,mayorMode,pending,throughTraffic:agents.filter(a=>String(a.id).startsWith('through-')).length,workersArrived:residents.filter(p=>p.jobsDone).length,commuting:count('commuting'),socializing:count('social'),atHome:count('home'),atWork:count('work'),stranded:count('stranded')};
     }
-    return {getState,step(minutes) {
+    return {getState,refreshNetwork,step(minutes) {
       if (Number.isFinite(minutes) && minutes > 0 && !disposed && !ended && !pending) {
         elapsed = Math.min(CLOSE-minute, elapsed+minutes);
         while (elapsed >= 1 && !ended && !pending) { elapsed--; tick(); }

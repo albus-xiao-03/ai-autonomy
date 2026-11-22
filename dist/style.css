@@ -18,3 +18,7 @@
 .maplabels span.trafficLabel{background:#c95241;color:#fff5dc;border:1px solid #f8eee0;font-size:10px;letter-spacing:.4px}
 
 .maplabels span.structureLabel{background:#314e56;color:#edf0d8;font:700 9px/1.5 ui-monospace,monospace;letter-spacing:.8px}
+
+.buildHint{position:absolute;left:18px;bottom:45px;max-width:80%;padding:7px 10px;border-radius:6px;color:#f0f2dc;background:#213a33df;font-size:13px;pointer-events:none}.buildHint:empty{display:none}#reverse.active{border-color:var(--gold)}
+
+.toolTabs{display:flex;gap:3px;margin:14px 0}.toolTabs button{flex:1;min-width:0;border:1px solid var(--line);border-radius:5px;background:#26382f;color:var(--cream);padding:8px 3px;font-size:12px}.toolTabs button[aria-selected=true]{background:var(--gold);border-color:var(--gold);color:#24372b;font-weight:700}.editBar{display:flex;gap:6px;margin-top:12px}.editBar button{margin-top:0;font-size:12px}.roadMode{margin-top:10px}.roadHeading{margin-top:12px}#levelGoal{margin-bottom:10px}.intro{font-size:12px}

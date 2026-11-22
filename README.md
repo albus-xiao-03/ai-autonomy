@@ -14,7 +14,11 @@ Level 1 starts near City Hall with Beacon Hill homes and Government Center offic
 
 Level 2 adds the West End and North End. Level 3 opens the river crossing to Kendall Square, the Financial District and Waterfront. Level 4 opens Charlestown. Neighborhoods use fixed illustrative building clusters.
 
-Select highway, one-way or two-way roads. Highways have two lanes in each direction. Two-way roads have one lane in each direction. One-way travel follows the drawing direction. Choose Click points or Drag road in the drawing selector. Click a selected tool again to deselect it. Move map also deselects tools. Drag the map to pan and use the wheel to zoom around the pointer. Shift drag pans while a road tool is selected. Escape ends the road and switches to moving.
+The mayor, expanding levels and fixed Boston areas remain the core game. The road-building and camera controls are being developed toward a city-builder interaction style.
+
+Select highway, one-way or two-way roads. Highways have two lanes in each direction. Two-way roads have one lane in each direction. One-way travel follows the drawing direction. Choose Straight or Curve under Road shape. Straight roads support Click points and Drag road. Curves use three clicks for start, bend and endpoint. The full-width preview turns red for invalid placement and shows length or the reason construction is blocked. Snapping prioritizes access points, road endpoints and road edges. The Snap roads & angles toggle also enables 15-degree angle increments.
+
+Choose Upgrade under Action, then choose a road type and elevation and click a player road. Reverse one-way changes its direction. Curves are treated as whole drawn roads for upgrades, reversal and bulldozing. A failed construction or upgrade leaves the prior layout intact. Edits are available while the day runs, and active trips are recalculated when the network changes. Undo restores the prior road state and recalculates traffic. Click a selected tool again to deselect it. Move map also deselects tools. Drag the map with the Move map tool, or use right drag or Shift drag while constructing. WASD moves relative to the camera. Q/E rotates the view. Middle drag rotates and tilts the camera. The wheel zooms around the pointer. Right-click cancels the current road draft. Escape deselects tools. Space pauses or resumes, Ctrl/Cmd+Z undoes, and Page Up/Down cycles road elevation.
 
 Road elevation supports ground, bridge/overpass and tunnel construction with all three road types. Structure endpoints must be on dry land. Bridges can cross water or land roads using continuous raised decks, ramps, railings and supports. Tunnels have portals and a dashed route guide. Underground vehicles are hidden until they emerge. Roads at different heights cross independently and connect at matching-height endpoints.
 
@@ -40,5 +44,7 @@ Sources:
 - https://services1.arcgis.com/hGdibHYSPO59RG1h/arcgis/rest/services/Massachusetts_Water_Features/FeatureServer
 
 Traffic controls can be placed at connected junctions. Select Traffic lights and click the junction. For Stop sign or Yield sign, click the incoming street near that junction. The preview arrow points into the junction and shows the controlled direction. Placing another sign on the same approach replaces it. Bulldoze also removes signs. Controls persist with the plan and participate in Undo.
+
+This prototype does not yet implement zoning, organic city growth, budgets, utilities or full service management. The Qwen mayor currently has dispatch and outreach actions.
 
 The browser saves progress under borough-levels-v1. Earlier free-placement and arcade saves remain under their previous keys. Timed building deliveries and additional disaster scenarios are pending.
