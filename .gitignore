@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.import_linter_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Node (the JS project is rooted at the repository root; decision D3)
+node_modules/
+/dist/
+/test-results/
+/playwright-report/
+/blob-report/
+
+# Run records and exports (plans/R1.md §4.7). Committed fixtures live under tests/engines/.
+/runs/
+*.aia-run.zip
+
+# Secrets never enter the repository (ARCH-05)
+.env
+.env.*
+!.env.example
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/

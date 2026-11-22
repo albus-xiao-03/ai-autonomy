@@ -1,0 +1,970 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiaProtocol",
+  "description": "AI Autonomy engine-frontend protocol (plans/R1.md §4.8). One WebSocket at /ws carries JSON text frames discriminated by `type`. Generated from aiautonomy.engines.api.protocol; do not edit.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "server_message": {
+      "$ref": "#/$defs/ServerMessage"
+    },
+    "client_message": {
+      "$ref": "#/$defs/ClientMessage"
+    },
+    "health": {
+      "$ref": "#/$defs/HealthResponse"
+    }
+  },
+  "$defs": {
+    "AckMessage": {
+      "additionalProperties": false,
+      "description": "The immediate answer to exactly one command.",
+      "properties": {
+        "type": {
+          "const": "ack",
+          "type": "string"
+        },
+        "cmd_id": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id",
+        "ok",
+        "error",
+        "result"
+      ],
+      "title": "AckMessage",
+      "type": "object"
+    },
+    "Bounds": {
+      "additionalProperties": false,
+      "description": "World extent in meters; x points east, y north, origin at the map center.",
+      "properties": {
+        "min_x": {
+          "type": "number"
+        },
+        "min_y": {
+          "type": "number"
+        },
+        "max_x": {
+          "type": "number"
+        },
+        "max_y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_x",
+        "min_y",
+        "max_x",
+        "max_y"
+      ],
+      "title": "Bounds",
+      "type": "object"
+    },
+    "CancelCommand": {
+      "additionalProperties": false,
+      "description": "End the current run as interrupted (END-05).",
+      "properties": {
+        "type": {
+          "const": "cancel",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id"
+      ],
+      "title": "CancelCommand",
+      "type": "object"
+    },
+    "Change": {
+      "discriminator": {
+        "mapping": {
+          "remove": "#/$defs/RemoveChange",
+          "set": "#/$defs/SetChange",
+          "upsert": "#/$defs/UpsertChange"
+        },
+        "propertyName": "op"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/UpsertChange"
+        },
+        {
+          "$ref": "#/$defs/RemoveChange"
+        },
+        {
+          "$ref": "#/$defs/SetChange"
+        }
+      ],
+      "title": "Change"
+    },
+    "ClientMessage": {
+      "discriminator": {
+        "mapping": {
+          "cancel": "#/$defs/CancelCommand",
+          "configure": "#/$defs/ConfigureCommand",
+          "inspect": "#/$defs/InspectCommand",
+          "pause": "#/$defs/PauseCommand",
+          "reset": "#/$defs/ResetCommand",
+          "resume": "#/$defs/ResumeCommand",
+          "set_speed": "#/$defs/SetSpeedCommand",
+          "start": "#/$defs/StartCommand",
+          "step": "#/$defs/StepCommand",
+          "sync": "#/$defs/SyncCommand",
+          "telemetry": "#/$defs/TelemetryCommand"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ConfigureCommand"
+        },
+        {
+          "$ref": "#/$defs/StartCommand"
+        },
+        {
+          "$ref": "#/$defs/PauseCommand"
+        },
+        {
+          "$ref": "#/$defs/ResumeCommand"
+        },
+        {
+          "$ref": "#/$defs/StepCommand"
+        },
+        {
+          "$ref": "#/$defs/SetSpeedCommand"
+        },
+        {
+          "$ref": "#/$defs/ResetCommand"
+        },
+        {
+          "$ref": "#/$defs/CancelCommand"
+        },
+        {
+          "$ref": "#/$defs/InspectCommand"
+        },
+        {
+          "$ref": "#/$defs/SyncCommand"
+        },
+        {
+          "$ref": "#/$defs/TelemetryCommand"
+        }
+      ],
+      "title": "ClientMessage"
+    },
+    "ClockView": {
+      "additionalProperties": false,
+      "description": "Simulated clock after the latest completed tick.",
+      "properties": {
+        "tick": {
+          "description": "Completed ticks; 0 before the first tick.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "day": {
+          "description": "1-based simulated day.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "minute_of_day": {
+          "description": "Minutes since midnight (420 = 07:00).",
+          "maximum": 1439,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tick",
+        "day",
+        "minute_of_day"
+      ],
+      "title": "ClockView",
+      "type": "object"
+    },
+    "ConfigureCommand": {
+      "additionalProperties": false,
+      "description": "Create a fresh idle run (new run_id, run_epoch + 1); only when not running or paused.\nA snapshot follows the ack.",
+      "properties": {
+        "type": {
+          "const": "configure",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/$defs/RunConfigOverrides"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id",
+        "config"
+      ],
+      "title": "ConfigureCommand",
+      "type": "object"
+    },
+    "DecisionMessage": {
+      "additionalProperties": false,
+      "description": "A recorded model decision (first emitted in M4/M5).",
+      "properties": {
+        "type": {
+          "const": "decision",
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "integer"
+        },
+        "state_version": {
+          "type": "integer"
+        },
+        "tick": {
+          "type": "integer"
+        },
+        "record": {
+          "$ref": "#/$defs/DecisionRecord"
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "run_epoch",
+        "state_version",
+        "tick",
+        "record"
+      ],
+      "title": "DecisionMessage",
+      "type": "object"
+    },
+    "DecisionRecord": {
+      "additionalProperties": false,
+      "description": "A model decision outcome (placeholder until M4/M5).",
+      "properties": {
+        "decision_id": {
+          "type": "string"
+        },
+        "actor_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id",
+        "actor_id",
+        "outcome",
+        "summary"
+      ],
+      "title": "DecisionRecord",
+      "type": "object"
+    },
+    "DeltaMessage": {
+      "additionalProperties": false,
+      "description": "Changes since the previous delta; `state_version` is exactly one higher. At max speed\none delta may cover several ticks.",
+      "properties": {
+        "type": {
+          "const": "delta",
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "integer"
+        },
+        "state_version": {
+          "type": "integer"
+        },
+        "tick": {
+          "type": "integer"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/Change"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "run_epoch",
+        "state_version",
+        "tick",
+        "changes"
+      ],
+      "title": "DeltaMessage",
+      "type": "object"
+    },
+    "HealthResponse": {
+      "additionalProperties": false,
+      "description": "`GET /api/health`.",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "engine_version": {
+          "type": "string"
+        },
+        "git_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dirty": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "ok",
+        "engine_version",
+        "git_sha",
+        "dirty"
+      ],
+      "title": "HealthResponse",
+      "type": "object"
+    },
+    "InspectCommand": {
+      "additionalProperties": false,
+      "description": "Look up one entity; the ack's `result` holds it.",
+      "properties": {
+        "type": {
+          "const": "inspect",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "entity_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id",
+        "entity_id"
+      ],
+      "title": "InspectCommand",
+      "type": "object"
+    },
+    "MetricsMessage": {
+      "additionalProperties": false,
+      "description": "Metric values after `tick`; sent once per published delta.",
+      "properties": {
+        "type": {
+          "const": "metrics",
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "integer"
+        },
+        "state_version": {
+          "type": "integer"
+        },
+        "tick": {
+          "type": "integer"
+        },
+        "values": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "run_epoch",
+        "state_version",
+        "tick",
+        "values"
+      ],
+      "title": "MetricsMessage",
+      "type": "object"
+    },
+    "MoverView": {
+      "additionalProperties": false,
+      "description": "A moving entity; position in meters.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "x",
+        "y",
+        "kind"
+      ],
+      "title": "MoverView",
+      "type": "object"
+    },
+    "PauseCommand": {
+      "additionalProperties": false,
+      "description": "Pause a running run at the next tick boundary.",
+      "properties": {
+        "type": {
+          "const": "pause",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id"
+      ],
+      "title": "PauseCommand",
+      "type": "object"
+    },
+    "RemoveChange": {
+      "additionalProperties": false,
+      "description": "Remove the entity `id` from the keyed map `collection`.",
+      "properties": {
+        "op": {
+          "const": "remove",
+          "type": "string"
+        },
+        "collection": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "collection",
+        "id"
+      ],
+      "title": "RemoveChange",
+      "type": "object"
+    },
+    "ResetCommand": {
+      "additionalProperties": false,
+      "description": "Abandon the current run (interrupted if it had started), cancel in-flight work and\ncreate a fresh idle run with the same configuration. A snapshot follows the ack.",
+      "properties": {
+        "type": {
+          "const": "reset",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id"
+      ],
+      "title": "ResetCommand",
+      "type": "object"
+    },
+    "ResumeCommand": {
+      "additionalProperties": false,
+      "description": "Resume a paused run.",
+      "properties": {
+        "type": {
+          "const": "resume",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id"
+      ],
+      "title": "ResumeCommand",
+      "type": "object"
+    },
+    "RunConfigOverrides": {
+      "additionalProperties": false,
+      "description": "Run configuration overrides; omitted fields keep the scenario defaults.",
+      "properties": {
+        "scenario": {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "seed": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "duration": {
+          "maximum": 100000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "title": "RunConfigOverrides",
+      "type": "object"
+    },
+    "RunState": {
+      "description": "Lifecycle state of a run. `completed`, `removed` and `interrupted` are terminal.",
+      "enum": [
+        "idle",
+        "running",
+        "paused",
+        "completed",
+        "removed",
+        "interrupted"
+      ],
+      "title": "RunState",
+      "type": "string"
+    },
+    "RunStatus": {
+      "additionalProperties": false,
+      "description": "Playback and lifecycle status of the current run.",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/RunState"
+        },
+        "speed": {
+          "$ref": "#/$defs/Speed"
+        },
+        "ticks_per_second": {
+          "description": "Nominal playback rate: 5 at 1x, 10 at 2x, 20 at 4x, 0 at max (unpaced).",
+          "minimum": 0,
+          "type": "number"
+        },
+        "duration": {
+          "description": "Configured run length in ticks.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "waiting_for_inference": {
+          "description": "True while the driver waits for inference before phase 4 of a tick.",
+          "type": "boolean"
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "engine_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "speed",
+        "ticks_per_second",
+        "duration",
+        "waiting_for_inference",
+        "scenario",
+        "seed",
+        "engine_version"
+      ],
+      "title": "RunStatus",
+      "type": "object"
+    },
+    "RunStatusMessage": {
+      "additionalProperties": false,
+      "description": "Sent on connect and whenever any field of the run status changes.",
+      "properties": {
+        "type": {
+          "const": "run_status",
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "integer"
+        },
+        "state_version": {
+          "type": "integer"
+        },
+        "tick": {
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "run_epoch",
+        "state_version",
+        "tick",
+        "status"
+      ],
+      "title": "RunStatusMessage",
+      "type": "object"
+    },
+    "ServerMessage": {
+      "discriminator": {
+        "mapping": {
+          "ack": "#/$defs/AckMessage",
+          "decision": "#/$defs/DecisionMessage",
+          "delta": "#/$defs/DeltaMessage",
+          "metrics": "#/$defs/MetricsMessage",
+          "run_status": "#/$defs/RunStatusMessage",
+          "snapshot": "#/$defs/SnapshotMessage"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SnapshotMessage"
+        },
+        {
+          "$ref": "#/$defs/DeltaMessage"
+        },
+        {
+          "$ref": "#/$defs/RunStatusMessage"
+        },
+        {
+          "$ref": "#/$defs/MetricsMessage"
+        },
+        {
+          "$ref": "#/$defs/DecisionMessage"
+        },
+        {
+          "$ref": "#/$defs/AckMessage"
+        }
+      ],
+      "title": "ServerMessage"
+    },
+    "SetChange": {
+      "additionalProperties": false,
+      "description": "Replace the top-level singleton `field` of the world view (for example `clock`).",
+      "properties": {
+        "op": {
+          "const": "set",
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "value": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "value"
+      ],
+      "title": "SetChange",
+      "type": "object"
+    },
+    "SetSpeedCommand": {
+      "additionalProperties": false,
+      "description": "Change the playback speed; applies from the next tick boundary.",
+      "properties": {
+        "type": {
+          "const": "set_speed",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "speed": {
+          "$ref": "#/$defs/Speed"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id",
+        "speed"
+      ],
+      "title": "SetSpeedCommand",
+      "type": "object"
+    },
+    "SnapshotMessage": {
+      "additionalProperties": false,
+      "description": "Full world view; replaces all client state for `run_id`.",
+      "properties": {
+        "type": {
+          "const": "snapshot",
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "integer"
+        },
+        "state_version": {
+          "type": "integer"
+        },
+        "tick": {
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "world": {
+          "$ref": "#/$defs/WorldView"
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "run_epoch",
+        "state_version",
+        "tick",
+        "status",
+        "world"
+      ],
+      "title": "SnapshotMessage",
+      "type": "object"
+    },
+    "Speed": {
+      "description": "Playback speed. `max` runs ticks back to back without wall-clock pacing.",
+      "enum": [
+        "1x",
+        "2x",
+        "4x",
+        "max"
+      ],
+      "title": "Speed",
+      "type": "string"
+    },
+    "StartCommand": {
+      "additionalProperties": false,
+      "description": "Start an idle run.",
+      "properties": {
+        "type": {
+          "const": "start",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id"
+      ],
+      "title": "StartCommand",
+      "type": "object"
+    },
+    "StepCommand": {
+      "additionalProperties": false,
+      "description": "Advance exactly one tick; only when idle or paused (the run is paused afterwards).",
+      "properties": {
+        "type": {
+          "const": "step",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id"
+      ],
+      "title": "StepCommand",
+      "type": "object"
+    },
+    "SyncCommand": {
+      "additionalProperties": false,
+      "description": "Request a fresh snapshot, sent after the ack.",
+      "properties": {
+        "type": {
+          "const": "sync",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id"
+      ],
+      "title": "SyncCommand",
+      "type": "object"
+    },
+    "TelemetryCommand": {
+      "additionalProperties": false,
+      "description": "Client performance samples, kept in memory for benchmark reports.",
+      "properties": {
+        "type": {
+          "const": "telemetry",
+          "type": "string"
+        },
+        "cmd_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "fps": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "frame_ms_p95": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "cmd_latency_ms_p50": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "cmd_latency_ms_p95": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "samples": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "cmd_id",
+        "fps",
+        "frame_ms_p95",
+        "cmd_latency_ms_p50",
+        "cmd_latency_ms_p95",
+        "samples"
+      ],
+      "title": "TelemetryCommand",
+      "type": "object"
+    },
+    "UpsertChange": {
+      "additionalProperties": false,
+      "description": "Insert or replace the whole entity `id` in the keyed map `collection`.",
+      "properties": {
+        "op": {
+          "const": "upsert",
+          "type": "string"
+        },
+        "collection": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "value": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "op",
+        "collection",
+        "id",
+        "value"
+      ],
+      "title": "UpsertChange",
+      "type": "object"
+    },
+    "WorldView": {
+      "additionalProperties": false,
+      "description": "Renderable world state. Keyed maps (`movers`) are the collections that `upsert` and\n`remove` changes address; other top-level fields are singletons replaced by `set`.",
+      "properties": {
+        "clock": {
+          "$ref": "#/$defs/ClockView"
+        },
+        "bounds": {
+          "$ref": "#/$defs/Bounds"
+        },
+        "movers": {
+          "additionalProperties": {
+            "$ref": "#/$defs/MoverView"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "clock",
+        "bounds",
+        "movers"
+      ],
+      "title": "WorldView",
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+# M0 toy world: about 40 pedestrians walking a 7 × 7 street grid (plans/R1.md §7 M0).
+# Meters; x east, y north, origin at the grid center. Values not set under `sim`
+# come from config/engine.yaml.
+id: toy
+version: 1
+schema_version: 1
+title: Toy street grid
+description: >-
+  Walking skeleton for the deterministic tick pipeline, recorder, replay and the
+  browser shell. Movers turn at intersections using the keyed RNG.
+
+sim: {}
+
+world:
+  kind: toy_grid
+  columns: 7
+  rows: 7
+  block_m: 120
+  movers: 40
+  jogger_share_bp: 2500
+  walker_speed_mps: [1.0, 1.6]
+  jogger_speed_mps: [2.2, 3.0]

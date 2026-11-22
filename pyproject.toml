@@ -1,0 +1,154 @@
+[project]
+name = "aiautonomy"
+version = "0.1.0"
+description = "AI Autonomy R1 simulation engine"
+license = "MIT"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "websockets>=13",
+    "pydantic>=2.12,<3",
+    "PyYAML>=6.0.2",
+    # Not used before M5; pinned now to confirm Python 3.14 compatibility (plans/R1.md §12).
+    "anthropic>=1,<2",
+]
+
+[project.scripts]
+aia = "aiautonomy.engines.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "hypothesis>=6.120",
+    "ruff>=0.8",
+    "mypy>=1.15",
+    "import-linter>=2.1",
+    "types-PyYAML",
+    "httpx>=0.28",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+# Only the Python engine is packaged; aiautonomy/interfaces/ holds the TypeScript frontend.
+[tool.hatch.build.targets.wheel]
+only-include = ["aiautonomy/__init__.py", "aiautonomy/engines"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["aiautonomy/__init__.py", "aiautonomy/engines", "pyproject.toml", "LICENSE"]
+
+# --- ruff -------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["."]
+respect-gitignore = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PT", "RUF", "ASYNC"]
+# The specification and docs use typographic dashes and quotes.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["aiautonomy"]
+
+# --- mypy -------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.14"
+files = ["aiautonomy/engines"]
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_equality = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+
+# plans/R1.md §6: strict on core, finance, mayor and agents. `strict` itself is
+# global-only in mypy, so the strict flag set is spelled out per module.
+[[tool.mypy.overrides]]
+module = [
+    "aiautonomy.engines.core",
+    "aiautonomy.engines.core.*",
+    "aiautonomy.engines.finance",
+    "aiautonomy.engines.finance.*",
+    "aiautonomy.engines.mayor",
+    "aiautonomy.engines.mayor.*",
+    "aiautonomy.engines.agents",
+    "aiautonomy.engines.agents.*",
+]
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+no_implicit_reexport = true
+extra_checks = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# --- pytest -----------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests/engines"]
+pythonpath = ["."]
+addopts = ["-m", "not live", "--strict-markers", "--import-mode=importlib"]
+markers = [
+    "req(id): links a test to requirement IDs in specs/R1.md (aia trace)",
+    "live: needs the real local Ollama model; opt-in via `make test-live`",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+# --- import-linter -----------------------------------------------------------
+
+[tool.importlinter]
+root_package = "aiautonomy"
+
+[[tool.importlinter.contracts]]
+name = "core imports no other aiautonomy.engines package"
+type = "forbidden"
+source_modules = ["aiautonomy.engines.core"]
+forbidden_modules = [
+    "aiautonomy.engines.agents",
+    "aiautonomy.engines.api",
+    "aiautonomy.engines.bench",
+    "aiautonomy.engines.build",
+    "aiautonomy.engines.cli",
+    "aiautonomy.engines.events",
+    "aiautonomy.engines.finance",
+    "aiautonomy.engines.host",
+    "aiautonomy.engines.mayor",
+    "aiautonomy.engines.metrics",
+    "aiautonomy.engines.politics",
+    "aiautonomy.engines.record",
+    "aiautonomy.engines.residents",
+    "aiautonomy.engines.services",
+    "aiautonomy.engines.sim",
+    "aiautonomy.engines.trace",
+    "aiautonomy.engines.traffic",
+    "aiautonomy.engines.world",
+]
+
+[[tool.importlinter.contracts]]
+name = "runtime layering"
+type = "layers"
+layers = [
+    "aiautonomy.engines.cli",
+    "aiautonomy.engines.api",
+    "aiautonomy.engines.record",
+    "aiautonomy.engines.sim",
+    "aiautonomy.engines.world",
+    "aiautonomy.engines.core",
+]
