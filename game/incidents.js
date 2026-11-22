@@ -106,7 +106,7 @@ window.CityIncidents = (() => {
       }
       if(scheduled&&now()===675){
         const site=options.sites().find(s=>s.type==='residential')||options.sites()[0];
-        if(site)spawn(CityPlan.level%2?'flood':'storm',site);
+        if(site)spawn('storm',site);
       }
       for(const incident of active()){
         if(incident.mediationEnds&&now()>=incident.mediationEnds){resolve(incident,'The protest dispersed after mediation.');continue;}

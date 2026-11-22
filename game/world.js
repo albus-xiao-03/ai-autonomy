@@ -5,7 +5,11 @@
   function mount(container,{onPoint,onHover,getTool,onRoadStart,onRoadEnd,onRoadCancel}) {
     const scene=new T.Scene();
     scene.background = new T.Color(0x7ba9ba);
-    const camera=new T.OrthographicCamera(-2000,2000,1600,-1600,1,30000);
+    // Top-down editing uses an orthographic camera; the default 3D view is a tilted perspective
+    // camera with sky and distance haze (a Google Earth-style look).
+    const orthoCamera=new T.OrthographicCamera(-2000,2000,1600,-1600,1,30000),perspCamera=new T.PerspectiveCamera(38,1,1,40000);
+    let camera=orthoCamera;
+    const skyColor=new T.Color(0xbfd6e4),planColor=new T.Color(0x7ba9ba),haze=new T.Fog(0xbfd6e4,2000,8000);
     const renderer=new T.WebGLRenderer({antialias:true,alpha:false,powerPreference:"low-power"});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     renderer.shadowMap.enabled=true;
@@ -18,7 +22,7 @@
     const sun=new T.DirectionalLight(0xfff1d8,2.3);
     sun.position.set(-1500,4000,1800);sun.castShadow=true;
     Object.assign(sun.shadow.camera,{left:-2200,right:2200,top:2000,bottom:-2000,far:10000});
-    sun.shadow.mapSize.set(2048,2048);sun.shadow.normalBias=.05;sun.shadow.bias=-.00015;
+    sun.shadow.mapSize.set(2048,2048);sun.shadow.normalBias=1.5;sun.shadow.bias=-.00015;
     scene.add(sun);
     const geometries={box:new T.BoxGeometry(1,1,1), round:new T.CylinderGeometry(1,1,1,12), roof:new T.ConeGeometry(1,1,4), pine:new T.ConeGeometry(1,1,7), crown:new T.IcosahedronGeometry(1,0), dome:new T.SphereGeometry(1,10,4,0,Math.PI*2,0,Math.PI/2)};
     const material=new T.MeshStandardMaterial({roughness:1,flatShading:true});
@@ -127,10 +131,113 @@
     }
     CityPlan.polygons.forEach((poly,i)=>landShape(poly,CityPlan.holes[i]));
     box(0,-14,0,18000,1,18000,0x6598ac);
-    for(const c of CityPlan.landmarks) {
+    for(const c of CityPlan.landmarks.filter(l=>l.site==='common')) {
       origin=c;modelScale=c.scale||8;landmark(c);origin=null;modelScale=1;
     }
     flush();
+    // ---- Real Boston city layer (OpenStreetMap footprints, 1:1) ----
+    // Level of detail saves GPU, memory and CPU: building masses are always drawn; detail
+    // (cornices, porches, awnings) appears at zoom >= 3 and window rows at zoom >= 6, and both
+    // only for the 300 m tiles in view. Only masses cast shadows.
+    const CITY_TILE=300,CITY_GROUND=.85,cityTiles=new Map(),cityInstances=new Map(),cityHidden=new T.Matrix4().makeScale(0,0,0),cityObject=new T.Object3D();
+    function cityTile(b){const tx=Math.floor(b.x/CITY_TILE),tz=Math.floor(b.z/CITY_TILE),key=tx+','+tz;if(!cityTiles.has(key))cityTiles.set(key,{minX:tx*CITY_TILE,minZ:tz*CITY_TILE,layers:{mass:[],detail:[],fine:[]},groups:{}});return cityTiles.get(key);}
+    // Place one part in the building's own frame: lx runs along the footprint's long edge (w), lz across it (d).
+    function cpart(tile,layer,b,shape,lx,ly,lz,w,h,d,color,yaw=0){
+      const c=Math.cos(b.r),s=Math.sin(b.r);
+      cityObject.position.set(b.x+lx*c-lz*s,ly,b.z+lx*s+lz*c);cityObject.rotation.set(0,-b.r+yaw,0);cityObject.scale.set(w,h,d);cityObject.updateMatrix();
+      tile.layers[layer].push({shape,matrix:cityObject.matrix.clone(),color,id:b.id});
+    }
+    const cityBrick=[0xa4553f,0x9b4a39,0xb0614a,0x97503e],cityClapboard=[0xd8cdb0,0xa9bcc4,0xc9a88a,0xb7c4a5];
+    function cityBuilding(b){
+      const t=cityTile(b),G=CITY_GROUND,W=Math.max(4,b.w),D=Math.max(4,b.d),H=Math.max(4,b.h),top=G+H,floors=Math.max(1,Math.min(60,Math.round(H/3.3))),id=Math.abs(b.id);
+      const P=(layer,shape,lx,ly,lz,w,h,d,color,yaw)=>cpart(t,layer,b,shape,lx,ly,lz,w,h,d,color,yaw);
+      const body=color=>P('mass','box',0,G+H/2,0,W,H,D,color);
+      const bands=(color,all=false)=>{for(let f=0;f<floors;f++){const y=G+2+f*3.3;if(y>top-1)break;
+        P('fine','box',0,y,D/2+.06,W*.82,1.2,.12,color);P('fine','box',0,y,-D/2-.06,W*.82,1.2,.12,color);
+        if(all){P('fine','box',W/2+.06,y,0,.12,1.2,D*.82,color);P('fine','box',-W/2-.06,y,0,.12,1.2,D*.82,color);}}};
+      if(b.k==='res'){
+        // Four Boston residential styles, chosen per building by the data file (b.s).
+        if(b.s===0){ // red-brick rowhouse with a white cornice
+          body(cityBrick[id%4]);P('mass','box',0,top+.15,0,W,.3,D,0x4a4440);P('detail','box',0,top-.4,0,W+.5,.7,D+.5,0xe9e0c8);P('detail','box',0,G+.5,D/2+.8,1.6,1,1.4,0x8f8576);bands(0x2f3b40);
+        }else if(b.s===1){ // brownstone with a bay window and stoop
+          body(0x6e4a3a);P('mass','box',0,top+.15,0,W,.3,D,0x3d3532);P('detail','box',-W*.22,G+H*.42,D/2+.7,W*.34,H*.8,1.4,0x7a5444);P('detail','box',W*.25,G+.7,D/2+1.2,1.6,1.4,2.2,0x8a6a5a);P('detail','box',0,top-.35,0,W+.4,.6,D+.4,0x2e2724);bands(0x2a3236);
+        }else if(b.s===2){ // triple-decker with stacked porches
+          const porch=Math.min(H,13);body(cityClapboard[id%4]);P('mass','box',0,top+.2,0,W+.9,.4,D+.9,0x5a5550);
+          for(let f=0;f<Math.min(floors,4);f++)P('detail','box',0,G+.3+f*3.3,D/2+1.1,W*.9,.25,2.2,0xf2efe6);
+          for(const sx of [-.42,.42])P('detail','box',W*sx,G+porch/2,D/2+2.1,.3,porch,.3,0xf2efe6);bands(0x34414a);
+        }else{ // Beacon Hill federal brick with slate roof, dormer and black shutters
+          body(0x8a3a2c);P('mass','roof',0,top+1.6,0,W*.72,3.2,D*.72,0x4b4f55,Math.PI/4);P('detail','box',0,top+1.4,D*.22,W*.25,1.6,1.2,0x4b4f55);
+          for(const sx of [-.32,-.12,.12,.32])P('detail','box',W*sx,G+H*.5,D/2+.1,.45,H*.75,.12,0x1d1f22);bands(0xe8e2d0);
+        }
+      }else if(b.k==='office'){
+        body(id%2?0x9eadb2:0xc7c0ae);P('mass','box',W*.15,top+1.2,-D*.1,Math.min(W*.35,14),2.4,Math.min(D*.35,10),0x7d878a);P('detail','box',0,top-.3,0,W+.4,.6,D+.4,0x5e6c70);bands(0x46606b,true);
+      }else if(b.k==='shop'){
+        body(0xe0b98a);P('mass','box',0,top+.15,0,W,.3,D,0x6b5a4a);for(let i=0;i<6;i++)P('detail','box',-W*.42+i*W*.168,G+3.2,D/2+.9,W*.168,.25,1.8,i%2?0xf1dfb7:0xb85d43);bands(0x2f3b40);
+      }else if(b.k==='parking'){
+        body(0x8a9396);for(let f=1;f<floors;f++)P('detail','box',0,G+f*3.3,0,W+.3,.35,D+.3,0x6c7477);
+      }else{ // fire, police and medical share one civic style with a department colour band
+        const look={fire:[0xa13d30,0xd9443a],police:[0x5f6670,0x2d5aa8],medical:[0xe9e7df,0x2f8f6f]}[b.k]||[0xb0a89a,0x777777];
+        body(look[0]);P('mass','box',0,top-1.2,0,W+.3,1.6,D+.3,look[1]);P('mass','box',0,top+.15,0,W,.3,D,0x3f3f3f);
+        if(b.k==='fire'){P('mass','box',W/2-3,top+5,-D/2+3,5,10,5,look[0]);for(const sx of [-.25,.25])P('detail','box',W*sx,G+2.5,D/2+.08,W*.32,5,.15,0x2b2b2b);}
+        if(b.k==='police'){P('mass','round',W*.3,top+1.2,D*.3,.8,2,.8,0x3b6fd6);P('detail','box',0,G+3,D/2+.1,W*.6,1.2,.15,0x2d5aa8);}
+        if(b.k==='medical'){const m=Math.min(W,D);P('mass','box',0,top+.5,0,m*.5,.5,m*.14,0xd23c34);P('mass','box',0,top+.5,0,m*.14,.5,m*.5,0xd23c34);}
+        bands(b.k==='medical'?0x4d7f95:0x2f3b40,true);
+      }
+    }
+    // Unique and historical buildings: the real footprint extruded to real height (1:1), plus accents.
+    const uniqueGroup=new T.Group();scene.add(uniqueGroup);
+    const uniqueMaterials=new Map(),uniqueMaterial=color=>{if(!uniqueMaterials.has(color))uniqueMaterials.set(color,new T.MeshStandardMaterial({color,roughness:.9,flatShading:true}));return uniqueMaterials.get(color);};
+    function uniqueColor(b){const n=(b.n||'').toLowerCase();if(n.includes('massachusetts state house'))return 0xc9885a;if(n==='boston city hall')return 0xb9b2a2;if(n.includes('quincy'))return 0xd9cdb0;if(n.includes('garden')||n.includes('north station'))return 0x8d8f8a;if(n.includes('custom house'))return 0xd8d2bf;if(n.includes('court'))return 0xcfc6b0;if(/church|shul|chapel/.test(n))return 0xe2d9c4;return [0xb5654a,0xa95b45,0xc07a5c][Math.abs(b.id)%3];}
+    function uniqueBuilding(b){
+      const G=CITY_GROUND,n=(b.n||'').toLowerCase(),church=/church|shul|chapel/.test(n),bodyH=church?Math.min(b.h,16):Math.max(6,b.h);
+      const geo=new T.ExtrudeGeometry(new T.Shape(b.fp.map(([x,z])=>new T.Vector2(x,-z))),{depth:bodyH,bevelEnabled:false});geo.rotateX(-Math.PI/2);
+      const mesh=new T.Mesh(geo,uniqueMaterial(uniqueColor(b)));mesh.position.set(b.x,G,b.z);mesh.castShadow=mesh.receiveShadow=true;mesh.userData.cityId=b.id;uniqueGroup.add(mesh);
+      const t=cityTile(b),P=(shape,lx,ly,lz,w,h,d,color,yaw)=>cpart(t,'mass',b,shape,lx,ly,lz,w,h,d,color,yaw),m=Math.min(b.w,b.d);
+      if(n.includes('massachusetts state house')){P('round',0,G+bodyH+2,0,m*.16,4,m*.16,0xf0ead8);P('dome',0,G+bodyH+4,0,m*.15,m*.13,m*.15,0xe0b04a);P('round',0,G+bodyH+5.2+m*.13,0,.8,2.4,.8,0xe8c977);}
+      else if(church){const tx=-b.w/2+Math.min(5,b.w*.2);P('box',tx,G+b.h*.35,0,6,b.h*.7,6,0xe2d9c4);P('pine',tx,G+b.h*.85,0,3.2,b.h*.3,3.2,0xf3f0e6);}
+      else if(n.includes('faneuil hall')){P('round',0,G+bodyH+2,b.d*.1,2.2,4,2.2,0xf3efe2);P('dome',0,G+bodyH+4,b.d*.1,2.3,2.5,2.3,0x6f8f7c);}
+      else if(n.includes('quincy market')){P('dome',0,G+bodyH,0,m*.3,m*.22,m*.3,0xa96f45);}
+      else if(n.includes('custom house tower')){P('roof',0,G+bodyH+6,0,b.w*.4,12,b.d*.4,0x5f7f74,Math.PI/4);}
+      else if(n.includes('old state house')){P('box',b.w*.3,G+bodyH+3,0,3,6,3,0xf3efe2);P('pine',b.w*.3,G+bodyH+8,0,1.6,4,1.6,0xf3efe2);}
+    }
+    // Gold outline = permanent historical protection; dashed blue outline = author-set lock.
+    function lockOutlines(){
+      const gold=[],blue=[];
+      for(const b of CityPlan.city){if(!b.locked||!b.fp)continue;const list=b.locked==='permanent'?gold:blue;
+        b.fp.forEach(([x,z],i)=>{const [nx,nz]=b.fp[(i+1)%b.fp.length];list.push(new T.Vector3(b.x+x,CITY_GROUND+.3,b.z+z),new T.Vector3(b.x+nx,CITY_GROUND+.3,b.z+nz));});}
+      scene.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(gold),new T.LineBasicMaterial({color:0xf1d181})));
+      const dashed=new T.LineSegments(new T.BufferGeometry().setFromPoints(blue),new T.LineDashedMaterial({color:0x5fa8ff,dashSize:3,gapSize:2}));dashed.computeLineDistances();scene.add(dashed);
+    }
+    function buildCity(){
+      for(const b of CityPlan.city){if(b.k==='unique'){if(b.fp)uniqueBuilding(b);}else cityBuilding(b);}
+      for(const tile of cityTiles.values())for(const layer of ['mass','detail','fine']){
+        const group=new T.Group();group.visible=layer==='mass';scene.add(group);tile.groups[layer]=group;
+        const byShape={};for(const p of tile.layers[layer])(byShape[p.shape]??=[]).push(p);
+        for(const [shape,list] of Object.entries(byShape)){
+          const mesh=new T.InstancedMesh(geometries[shape],material,list.length);
+          list.forEach((p,i)=>{mesh.setMatrixAt(i,p.matrix);mesh.setColorAt(i,new T.Color(p.color));if(!cityInstances.has(p.id))cityInstances.set(p.id,[]);cityInstances.get(p.id).push({mesh,i,matrix:p.matrix});});
+          mesh.castShadow=layer==='mass';mesh.receiveShadow=layer!=='fine';mesh.computeBoundingSphere();group.add(mesh);
+        }
+        tile.layers[layer]=null;
+      }
+      lockOutlines();
+    }
+    let cityGone=new Set();
+    // Hide bulldozed buildings (and restore them on undo) by touching only the changed instances.
+    function applyCityRemoval(){
+      const now=CityPlan.removedCity,changed=[...now].filter(id=>!cityGone.has(id)).concat([...cityGone].filter(id=>!now.has(id)));
+      if(!changed.length)return;const touched=new Set();
+      for(const id of changed)for(const e of cityInstances.get(id)||[]){e.mesh.setMatrixAt(e.i,now.has(id)?cityHidden:e.matrix);touched.add(e.mesh);}
+      touched.forEach(m=>{m.instanceMatrix.needsUpdate=true;m.computeBoundingSphere();});cityGone=new Set(now);
+    }
+    function updateCityLod(halfWidth,halfHeight){
+      const pad=tilt?2.2:1.15;
+      for(const t of cityTiles.values()){
+        const inView=t.minX<pan.x+halfWidth*pad&&t.minX+CITY_TILE>pan.x-halfWidth*pad&&t.minZ<pan.z+halfHeight*pad&&t.minZ+CITY_TILE>pan.z-halfHeight*pad;
+        t.groups.detail.visible=scale>=3&&inView;t.groups.fine.visible=scale>=6&&inView;
+      }
+    }
+    buildCity();
     const guard=new T.Mesh(new T.RingGeometry(CITY_HALL.radius-1,CITY_HALL.radius,100),new T.MeshBasicMaterial({color:0xf1d181,side:T.DoubleSide,transparent:true,opacity:.8,depthWrite:false}));
     guard.rotation.x=-Math.PI/2;guard.position.set(CITY_HALL.x,1.1,CITY_HALL.z);scene.add(guard);
     const preview=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({color:0xf6df9d,transparent:true,opacity:.5,side:T.DoubleSide,depthWrite:false}));
@@ -139,7 +246,7 @@
     let previewLine=null;
     const labelsLayer=document.createElement('div');labelsLayer.className='maplabels';container.append(labelsLayer);
     let labels=[];
-    function refreshLabels(){labelsLayer.replaceChildren();labels=[...latestIncidents.filter(i=>!['resolved','averted'].includes(i.status)).map(i=>({name:i.label.toUpperCase()+' · '+i.response,x:i.x,z:i.z,incident:true})),...CityPlan.landmarks,...CityPlan.highwayGates(),...CityPlan.highwayRamps(),...CityPlan.servicePoints(),...CityPlan.plan.buildings.filter(b=>b.area),...CityPlan.plan.roads.filter(r=>(r.bridge||r.tunnel)&&(!r.pathId||r.pathStart===0)).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';if(l.incident)el.className='incidentLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,l.height??35,l.z)};});}
+    function refreshLabels(){labelsLayer.replaceChildren();labels=[...latestIncidents.filter(i=>!['resolved','averted'].includes(i.status)).map(i=>({name:i.label.toUpperCase()+' · '+i.response,x:i.x,z:i.z,incident:true})),...CityPlan.landmarks,...CityPlan.highwayGates(),...CityPlan.highwayRamps(),...CityPlan.servicePoints(),...CityPlan.city.filter(b=>b.n&&(['fire','police'].includes(b.k)||/^(paul revere house|faneuil hall|old state house|museum of science|north station|old west church|the vilna shul|otis house museum|old north church)$/i.test(b.n))).map(b=>({name:b.n.replace('Boston Fire Department ','Fire · ').replace('Boston Police Department ','Police · '),x:b.x,z:b.z,height:b.h+12})),...CityPlan.plan.buildings.filter(b=>b.area),...CityPlan.plan.roads.filter(r=>(r.bridge||r.tunnel)&&(!r.pathId||r.pathStart===0)).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';if(l.incident)el.className='incidentLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,l.height??35,l.z)};});}
     refreshLabels();
     let fog=null;
     function drawFog(){
@@ -299,7 +406,7 @@
     }
     function disposeGroup(g) {if(g){scene.remove(g);g.children.forEach(m=>{m.dispose?.();if(m.userData.ownedGeometry)m.geometry.dispose();});}}
     let cursor={x:0,z:500};
-    let scale=1,tilt=false,azimuth=0,elevationAngle=Math.PI/2-.001,orbit=null,pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2},lastRevision=-1,drag=null,roadDrag=null,moved=false;
+    let scale=1.3,tilt=true,azimuth=.35,elevationAngle=Math.PI*.3,orbit=null,pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2},lastRevision=-1,drag=null,roadDrag=null,moved=false;
     const ray=new T.Raycaster(),pos=new T.Vector2(),ground=new T.Plane(new T.Vector3(0,1,0),0);
     function pick(e) {
       const r=renderer.domElement.getBoundingClientRect();
@@ -337,19 +444,27 @@
       if(directions[e.key]){e.preventDefault();let [dx,dz]=directions[e.key];if(e.shiftKey){dx/=5;dz/=5;}if(getTool().pan){pan.x+=(dx*Math.cos(azimuth)+dz*Math.sin(azimuth))*4/scale;pan.z+=(-dx*Math.sin(azimuth)+dz*Math.cos(azimuth))*4/scale;resize();}else{cursor={x:cursor.x+dx,z:cursor.z+dz};onHover?.(cursor);}}
       if(e.key==='Enter'){e.preventDefault();onPoint(cursor);}
     });
-    renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();const before=pick(e);scale=Math.max(.7,Math.min(22,scale*(e.deltaY<0?1.15:1/1.15)));resize();const after=pick(e);if(before&&after){pan.x+=before.x-after.x;pan.z+=before.z-after.z;resize();}},{passive:false});
+    renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();const before=pick(e);scale=Math.max(.7,Math.min(60,scale*(e.deltaY<0?1.15:1/1.15)));resize();const after=pick(e);if(before&&after){pan.x+=before.x-after.x;pan.z+=before.z-after.z;resize();}},{passive:false});
     renderer.domElement.addEventListener('pointerleave',()=>{ghost(null);document.getElementById('buildHint').textContent='';});
     function render() {
       renderer.render(scene,camera);
       const width=container.clientWidth,height=container.clientHeight;
-      const occupied=[];labels.forEach(({el,point})=>{const pt=point.clone().project(camera);el.style.left=(pt.x+1)*width/2+'px';el.style.top=(1-pt.y)*height/2+'px';const x=(pt.x+1)*width/2,y=(1-pt.y)*height/2;const bounds=CityPlan.activeBounds;const hidden=point.x<bounds.minX||point.x>bounds.maxX||point.z<bounds.minZ||point.z>bounds.maxZ||Math.abs(pt.x)>1||Math.abs(pt.y)>1||occupied.some(p=>Math.abs(p.x-x)<105&&Math.abs(p.y-y)<23);el.style.display=hidden?'none':'';if(!hidden)occupied.push({x,y});});
+      const occupied=[];labels.forEach(({el,point})=>{const pt=point.clone().project(camera);el.style.left=(pt.x+1)*width/2+'px';el.style.top=(1-pt.y)*height/2+'px';const x=(pt.x+1)*width/2,y=(1-pt.y)*height/2;const bounds=CityPlan.activeBounds;const hidden=point.x<bounds.minX||point.x>bounds.maxX||point.z<bounds.minZ||point.z>bounds.maxZ||pt.z>1||Math.abs(pt.x)>1||Math.abs(pt.y)>1||occupied.some(p=>Math.abs(p.x-x)<105&&Math.abs(p.y-y)<23);el.style.display=hidden?'none':'';if(!hidden)occupied.push({x,y});});
     }
     function resize() {
       const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;
       const half=Math.max((CityPlan.activeBounds.maxZ-CityPlan.activeBounds.minZ)/2+45,((CityPlan.activeBounds.maxX-CityPlan.activeBounds.minX)/2+45)*h/w)/scale;
-      camera.left=-half*w/h;camera.right=half*w/h;camera.top=half;camera.bottom=-half;
-      camera.position.set(pan.x+Math.sin(azimuth)*Math.cos(elevationAngle)*6000,Math.sin(elevationAngle)*6000,pan.z+Math.cos(azimuth)*Math.cos(elevationAngle)*6000);camera.lookAt(pan.x,0,pan.z);camera.updateProjectionMatrix();
-      renderer.setSize(w,h,false);document.querySelector('.compass').style.transform='rotate('+(-azimuth*180/Math.PI)+'deg)';render();
+      if(tilt){
+        const distance=half/Math.tan(perspCamera.fov*Math.PI/360);camera=perspCamera;
+        perspCamera.aspect=w/h;perspCamera.near=Math.max(1,distance/300);perspCamera.far=distance*10+8000;
+        perspCamera.position.set(pan.x+Math.sin(azimuth)*Math.cos(elevationAngle)*distance,Math.sin(elevationAngle)*distance,pan.z+Math.cos(azimuth)*Math.cos(elevationAngle)*distance);perspCamera.lookAt(pan.x,0,pan.z);perspCamera.updateProjectionMatrix();
+        haze.near=distance*1.1;haze.far=distance*4.5;scene.fog=haze;scene.background=skyColor;if(fog)fog.position.y=-158.5;
+      }else{
+        camera=orthoCamera;camera.left=-half*w/h;camera.right=half*w/h;camera.top=half;camera.bottom=-half;
+        camera.position.set(pan.x+Math.sin(azimuth)*Math.cos(elevationAngle)*6000,Math.sin(elevationAngle)*6000,pan.z+Math.cos(azimuth)*Math.cos(elevationAngle)*6000);camera.lookAt(pan.x,0,pan.z);camera.updateProjectionMatrix();
+        scene.fog=null;scene.background=planColor;if(fog)fog.position.y=0;
+      }
+      updateCityLod(half*w/h,half);renderer.setSize(w,h,false);document.querySelector('.compass').style.transform='rotate('+(-azimuth*180/Math.PI)+'deg)';render();
       document.getElementById('scaleValue').textContent='100 m';
       document.getElementById('scaleBar').style.width=(100*CityPlan.scale/(half*2*w/h)*w)+'px';
     }
@@ -388,11 +503,17 @@
             part('crown',x+Math.cos(angle)*spread,20+i*2,z+Math.sin(angle)*spread,5,6,5,0x7c7b70);
           }
         }else if(kind==='protest'){
-          for(let i=0;i<26;i++){
-            const angle=i*2.4,spread=18*Math.sqrt((i+.5)/26),px=x+Math.cos(angle)*spread,pz=z+Math.sin(angle)*spread;
-            box(px,1.8,pz,.8,2,.8,[0x7d607c,0x527787,0xb46f53][i%3]);
-            part('crown',px,3.3,pz,.5,.5,.5,0xd8b28a);
-            if(i%3===0){box(px,4,pz,.2,3,.2,0x847352);box(px,5.4,pz,3.6,2,.25,0xf1dfaf,i);}
+          // Two protester models: marchers holding placards, and pairs carrying a banner.
+          // They stand only on open ground (streets, plazas, yards), never inside a building.
+          const shirts=[0x7d607c,0x527787,0xb46f53,0x5f8a5a,0xc9a54a];
+          const person=(px,pz,c)=>{box(px-.18,1.3,pz,.22,.9,.25,0x2f3640);box(px+.18,1.3,pz,.22,.9,.25,0x2f3640);box(px,2.25,pz,.7,1,.4,c);part('crown',px,3.05,pz,.32,.32,.32,0xd8b28a);};
+          const open=(px,pz)=>CityPlan.land({x:px,z:pz})&&!CityPlan.cityAt({x:px,z:pz});
+          let marchers=0,pairs=0;
+          for(let i=0;i<260&&(marchers<20||pairs<5);i++){
+            const a=i*2.4,sp=6+i*.45,px=x+Math.cos(a)*sp,pz=z+Math.sin(a)*sp;
+            if(!open(px,pz))continue;
+            if(marchers<20&&(i%4||pairs>=5)){marchers++;person(px,pz,shirts[i%5]);box(px+.45,3.3,pz,.12,2.4,.12,0x847352);box(px+.45,4.4,pz,1.6,1,.1,[0xf1dfaf,0xffffff,0xf4c9a0][i%3]);}
+            else if(pairs<5){const tx=-Math.sin(a),tz=Math.cos(a);if(!open(px-tx*1.6,pz-tz*1.6)||!open(px+tx*1.6,pz+tz*1.6))continue;pairs++;person(px-tx*1.6,pz-tz*1.6,shirts[(i+2)%5]);person(px+tx*1.6,pz+tz*1.6,shirts[(i+3)%5]);box(px,3,pz,3.6,1.1,.1,[0xd9443a,0xf1d181,0x2d5aa8][i%3],-a-Math.PI/2);}
           }
         }
       }
@@ -406,16 +527,14 @@
       renderer.domElement.style.cursor=getTool().pan?'grab':'crosshair';
       const damageKey=JSON.stringify(state.damage||{});damageById=state.damage||{};
       if(lastRevision!==CityPlan.revision||damageKey!==lastDamageKey){
-        disposeGroup(buildingMesh);refreshLabels();drawFog();
+        disposeGroup(buildingMesh);refreshLabels();drawFog();if(fog)fog.position.y=tilt?-158.5:0;
         for(const c of CityPlan.plan.buildings){
           if(c.area){
-            part('round',c.x,.2,c.z,59,.35,54,0xafbf92);
-            for(const [dx,dz] of [[-31,-26],[26,-31],[-24,27],[31,22]]){
-              const site={x:c.x+dx,z:c.z+dz,rotation:c.rotation,damage:damageById[c.id]||0};origin=site;modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,site);origin=null;modelScale=1;
-            }
+            // Neighbourhood hub: where residents of this area join the road network.
+            part('round',c.x,.95,c.z,c.radius,.3,c.radius,0xd9c27a);box(c.x,4,c.z,.6,6,.6,0x4a4f4a);box(c.x,6.8,c.z,6,1.8,.3,0xf1d181,-(c.rotation||0));
           }else{origin={...c,damage:damageById[c.id]||0};modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,c);origin=null;modelScale=1;}
         }
-        buildingMesh=flush();drawRoads();lastRevision=CityPlan.revision;lastDamageKey=damageKey;
+        buildingMesh=flush();applyCityRemoval();drawRoads();lastRevision=CityPlan.revision;lastDamageKey=damageKey;
       }
       if(agents.length!==agentCount){
         for(const mesh of [people,roofs,wheels])if(mesh){scene.remove(mesh);mesh.dispose();}
@@ -519,7 +638,7 @@
     }
     requestAnimationFrame(cameraLoop);
     new ResizeObserver(resize).observe(container);resize();
-    return {update,ghost,incidentPreview,roadPreview,snapTolerance,zoom(delta){scale=Math.max(.7,Math.min(22,scale*(delta>0?1.4:1/1.4)));resize();},resetView(){scale=1;azimuth=0;elevationAngle=Math.PI/2-.001;tilt=false;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},focusLevel(){scale=1;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},toggleView(){tilt=!tilt;elevationAngle=tilt?Math.PI*.32:Math.PI/2-.001;resize();}};
+    return {update,ghost,incidentPreview,roadPreview,snapTolerance,zoom(delta){scale=Math.max(.7,Math.min(60,scale*(delta>0?1.4:1/1.4)));resize();},resetView(){scale=1;azimuth=0;elevationAngle=Math.PI/2-.001;tilt=false;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},focusLevel(){scale=1;pan={x:(CityPlan.activeBounds.minX+CityPlan.activeBounds.maxX)/2,z:(CityPlan.activeBounds.minZ+CityPlan.activeBounds.maxZ)/2};resize();},toggleView(mode){tilt=mode==='3d'?true:mode==='top'?false:!tilt;elevationAngle=tilt?Math.PI*.3:Math.PI/2-.001;if(!tilt)azimuth=0;resize();return tilt;},get is3D(){return tilt;}};
   }
   window.CityWorld={mount};
 })();

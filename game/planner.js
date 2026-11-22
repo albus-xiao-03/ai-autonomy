@@ -17,12 +17,28 @@ window.CityPlan = (() => {
   landmarks.forEach(l=>{l.scale*=geo.scale;l.radius*=geo.scale;});
   const widths={highway:14,oneway:5,twoway:8};
   const buildingScale=type=>({residential:2.2,office:5,shop:3,social:3.8,park:5,parking:5}[type]||1)*geo.scale;
-  const plan={buildings:[],roads:[],controls:[]};
+  const plan={buildings:[],roads:[],controls:[],removedCity:[]};
   let closures=[],closureSignature='',protectedRegion=null;
   const roadWidth=road=>road.width||widths[road.type];
   const controlTypes={signal:'Traffic lights',stop:'Stop sign',yield:'Yield sign'};
-  let revision=0,graph=null,junctionCache=null,level=1;
-  const stages=[{minX:-500,maxX:1300,minZ:200,maxZ:1100},{minX:-650,maxX:1350,minZ:-250,maxZ:1100},{minX:-1650,maxX:1450,minZ:-450,maxZ:1335},{minX:-1650,maxX:1650,minZ:-1335,maxZ:1335}];
+  let revision=0,graph=null,junctionCache=null;
+  // One fixed map: the Boston area of the reference screenshot (no levels).
+  const BOUNDS={minX:-1127,maxX:1415,minZ:-1135,maxZ:1102};
+  // Real Boston buildings (OpenStreetMap). Historical/unique ones are permanently protected;
+  // fire, police and medical sites carry an author-set lock. Everything else can be bulldozed.
+  const city=(window.BOSTON_BUILDINGS?.buildings||[]).map(b=>({...b,locked:b.k==='unique'?'permanent':['fire','police','medical'].includes(b.k)?'author':null}));
+  const cityGrid=new Map(),CELL=100;
+  for(const b of city){const r=Math.hypot(b.w,b.d)/2;for(let gx=Math.floor((b.x-r)/CELL);gx<=Math.floor((b.x+r)/CELL);gx++)for(let gz=Math.floor((b.z-r)/CELL);gz<=Math.floor((b.z+r)/CELL);gz++){const k=gx+','+gz;if(!cityGrid.has(k))cityGrid.set(k,[]);cityGrid.get(k).push(b);}}
+  // Bulldozed buildings (saved) plus buildings cleared under the neighbourhood hubs (derived, not saved).
+  let removedSet=new Set(),removedKey='',hubCleared=new Set();
+  function removed(){const key=plan.removedCity.join(',')+'|'+hubCleared.size;if(key!==removedKey){removedKey=key;removedSet=new Set([...plan.removedCity,...hubCleared]);}return removedSet;}
+  function cityNear(p,r=0){const out=new Set(),gone=removed();for(let gx=Math.floor((p.x-r)/CELL);gx<=Math.floor((p.x+r)/CELL);gx++)for(let gz=Math.floor((p.z-r)/CELL);gz<=Math.floor((p.z+r)/CELL);gz++)for(const b of cityGrid.get(gx+','+gz)||[])if(!gone.has(b.id))out.add(b);return [...out];}
+  // Oriented-rectangle test in the building's own frame (r is the footprint edge angle).
+  function inCityRect(b,p,pad=0){const dx=p.x-b.x,dz=p.z-b.z,c=Math.cos(b.r),s=Math.sin(b.r);return Math.abs(dx*c+dz*s)<=b.w/2+pad&&Math.abs(-dx*s+dz*c)<=b.d/2+pad;}
+  function cityAt(p){return cityNear(p,0).find(b=>inCityRect(b,p,1))||null;}
+  function cityBlocks(p,radius){return cityNear(p,radius).some(b=>inCityRect(b,p,radius*.7));}
+  function cityCrossed(a,b,width){const n=Math.ceil(dist(a,b)/4);for(let i=0;i<=n;i++){const p={x:a.x+(b.x-a.x)*i/n,z:a.z+(b.z-a.z)*i/n};if(cityNear(p,width).some(c=>inCityRect(c,p,width/2-.5)))return true;}return false;}
+  const stages=[BOUNDS];
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
   function inside(p,poly) {
     let yes=false;
@@ -41,17 +57,18 @@ window.CityPlan = (() => {
   function changed() {revision++;graph=null;junctionCache=null;}
   function buildingError(p,ignore) {
     const radius=buildingScale(p.type||'residential')*4.2;
-    const bounds=stages[level-1];
-    if(p.x-radius<bounds.minX||p.x+radius>bounds.maxX||p.z-radius<bounds.minZ||p.z+radius>bounds.maxZ)return 'Complete this level to unlock that land.';
+    const bounds=BOUNDS;
+    if(p.x-radius<bounds.minX||p.x+radius>bounds.maxX||p.z-radius<bounds.minZ||p.z+radius>bounds.maxZ)return 'That land is outside the Boston map.';
     if(!land(p)||[[-radius,-radius],[radius,-radius],[radius,radius],[-radius,radius]].some(([x,z])=>!land({x:p.x+x,z:p.z+z})))return 'Choose dry land with room for the whole building.';
     if(!(protectedRegion&&dist(p,protectedRegion)<protectedRegion.radius)&&closures.some(c=>dist(p,c)<c.radius+radius))return 'This land is affected by an active incident.';
     if(landmarks.some(l=>dist(p,l)<l.radius+radius))return 'This historical landmark and its grounds are protected.';
+    if(cityBlocks(p,radius))return 'A Boston building stands here. Bulldoze it first.';
     if(plan.buildings.some(b=>b.id!==ignore&&dist(b,p)<(b.radius||buildingScale(b.type)*4.2)+radius))return 'Leave room between buildings.';
     if(plan.roads.some(r=>Math.abs(heightAt(projection(p,r.a,r.b),r))<3&&dist(p,projection(p,r.a,r.b))<roadWidth(r)/2+radius))return 'This position overlaps a road.';
     return '';
   }
   function roadError(a,b,type,bridge=false,tunnel=false,minimumLength=10,checkEndpoints=true) {
-    const bounds=stages[level-1];if([a,b].some(p=>p.x<bounds.minX||p.x>bounds.maxX||p.z<bounds.minZ||p.z>bounds.maxZ))return 'Complete this level to unlock that part of Boston.';
+    const bounds=BOUNDS;if([a,b].some(p=>p.x<bounds.minX||p.x>bounds.maxX||p.z<bounds.minZ||p.z>bounds.maxZ))return 'That part of the road is outside the Boston map.';
     if(roadBlocked({a,b,type,bridge,tunnel}))return 'Route around the active incident area.';
     if(checkEndpoints&&(!land(a)||!land(b)))return 'Both road ends must be on dry land.';
     let crossesWater=false;
@@ -63,6 +80,7 @@ window.CityPlan = (() => {
     }
     if(landmarks.some(l=>dist(l,projection(l,a,b))<l.radius+widths[type]/2&&(!tunnel||Math.min(dist(l,a),dist(l,b))<l.radius+50)))return 'Route the road around the protected landmark.';
     if(plan.buildings.some(p=>dist(p,projection(p,a,b))<(p.radius?p.radius-12:buildingScale(p.type)*4.2)+widths[type]/2&&(!tunnel||Math.min(dist(p,a),dist(p,b))<(p.radius||30)+50)))return 'This road crosses a building.';
+    if(!tunnel&&cityCrossed(a,b,widths[type]))return 'This road crosses a Boston building. Bulldoze it first or route around it.';
     if(plan.roads.some(r=>!!r.bridge===bridge&&!!r.tunnel===tunnel&&dist(a,projection(a,r.a,r.b))<.5&&dist(b,projection(b,r.a,r.b))<.5))return 'A road already follows this section.';
     return '';
   }
@@ -204,7 +222,7 @@ window.CityPlan = (() => {
     return landmarks.filter(l=>['hall','hospital'].includes(l.site)).map(l=>({name:l.site==='hall'?'City Hall · emergency crews':'Mass General · EMS',x:l.x,z:l.z+l.radius+10}));
   }
   function highwayGates(){
-    const bounds=stages[level-1],result=[];
+    const bounds=BOUNDS,result=[];
     for(const road of plan.roads.filter(r=>['i93-north','i93-south'].includes(r.pathId))){
       const a=road.a,b=road.b,dx=b.x-a.x,dz=b.z-a.z;
       const candidates=[];
@@ -385,7 +403,6 @@ window.CityPlan = (() => {
     heightAt,
     elevationAt(p){for(const r of plan.roads)if((r.bridge||r.tunnel)&&dist(p,projection(p,r.a,r.b))<roadWidth(r))return this.heightAt(p,r);for(const b of plan.buildings){const c=access(b);if(c?.road.bridge){const q=projection(p,c.entrance,c.p);if(dist(p,q)<3)return this.heightAt(c.p,c.road)*q.t;}}return 0;},
     seedArcade(next=1){
-      level=Math.max(1,Math.min(4,next));
       const areas=[
         ['beacon','Beacon Hill','residential',-71.0678,42.3598,Math.PI],
         ['north','North End','residential',-71.0540,42.3646,Math.PI*1.5],
@@ -396,15 +413,18 @@ window.CityPlan = (() => {
         ['government','Government Center','office',-71.0600,42.3617,Math.PI*1.5],
         ['waterfront','Waterfront','social',-71.0519,42.3624,Math.PI*1.5]
       ];
-      const unlocked=[['beacon','government'],['beacon','government','west','north'],['beacon','government','west','north','kendall','financial','waterfront'],areas.map(a=>a[0])][level-1];
       const playerBuildings=plan.buildings.filter(b=>!b.area);
-      plan.buildings=areas.filter(a=>unlocked.includes(a[0])).map(([id,label,type,lon,lat,rotation])=>({id,label,type,...point([lon,lat]),rotation,radius:70,area:true}));
+      plan.buildings=areas.filter(a=>{const p=point([a[3],a[4]]);return p.x-20>BOUNDS.minX&&p.x+20<BOUNDS.maxX&&p.z-20>BOUNDS.minZ&&p.z+20<BOUNDS.maxZ;}).map(([id,label,type,lon,lat,rotation])=>({id,label,type,...point([lon,lat]),rotation,radius:14,area:true}));
+      // Each neighbourhood is a small connection hub; clear the unlocked buildings under the hub and its entrance.
+      hubCleared=new Set(city.filter(c=>!c.locked&&plan.buildings.some(a=>a.area&&(inCityRect(c,a,a.radius)||inCityRect(c,{x:a.x+Math.sin(a.rotation)*a.radius*1.6,z:a.z+Math.cos(a.rotation)*a.radius*1.6},6)))).map(c=>c.id));
       plan.buildings.push(...playerBuildings);
       if(!plan.roads.some(r=>r.fixed&&String(r.pathId).startsWith('i93-')))highwaySeed();
       changed();
     },
-    get level(){return level;},
-    get activeBounds(){return stages[level-1];},
+    get activeBounds(){return BOUNDS;},
+    city,cityAt,cityNear,inCityRect,
+    get removedCity(){return removed();},
+    cityPopulation(){const gone=new Set(plan.removedCity);return city.reduce((n,b)=>n+(b.k==='res'&&!gone.has(b.id)?b.p||0:0),0);},
     get revision(){return revision;},changed,
     district:p=>p.x>300&&p.z<400?'North End':p.z<400?'West End':'Downtown',
     control(p,kind){
@@ -417,8 +437,8 @@ window.CityPlan = (() => {
     },
     place(p,type,rotation=0){const error=buildingError({...p,type});if(error)return error;plan.buildings.push({id:Date.now()+Math.random(),x:p.x,z:p.z,type,rotation});changed();return '';},
     road(a,b,type,bridge=false,tunnel=false){a=snap(a);b=snap(b);const error=roadError(a,b,type,bridge,tunnel);if(error)return error;plan.roads.push({id:Date.now()+Math.random(),a,b,type,bridge,tunnel});changed();return '';},
-    remove(p){const control=plan.controls.find(c=>dist(p,{x:c.x+(c.approach?.x||0)*20,z:c.z+(c.approach?.z||0)*20})<9);if(control){plan.controls.splice(plan.controls.indexOf(control),1);changed();return '';}const b=plan.buildings.find(b=>dist(b,p)<(b.radius||buildingScale(b.type)*4.2));if(b?.area)return 'This district is fixed. Connect its gold access point with roads.';if(b)plan.buildings.splice(plan.buildings.indexOf(b),1);else{const r=plan.roads.find(r=>dist(p,projection(p,r.a,r.b))<roadWidth(r)/2+1);if(!r)return 'Select a building or road to remove.';if(r.fixed)return 'The through highway is the fixed entry route. Connect local roads to it.';plan.roads=plan.roads.filter(road=>r.pathId?road.pathId!==r.pathId:road!==r);}changed();const live=junctions();plan.controls=plan.controls.filter(c=>live.some(j=>dist(c,j)<.1));return '';},
-    load(saved){if(saved?.version!==2)return;for(const b of saved.buildings||[])if(['residential','office','shop','social','park','parking'].includes(b.type)&&Number.isFinite(b.rotation)&&!buildingError(b))plan.buildings.push(b);for(const r of saved.roads||[])if(roadWidth(r)&&r.a&&r.b&&!roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId))plan.roads.push(r);changed();}
+    remove(p){const control=plan.controls.find(c=>dist(p,{x:c.x+(c.approach?.x||0)*20,z:c.z+(c.approach?.z||0)*20})<9);if(control){plan.controls.splice(plan.controls.indexOf(control),1);changed();return '';}const b=plan.buildings.find(b=>dist(b,p)<(b.radius||buildingScale(b.type)*4.2));if(b?.area)return 'This district is fixed. Connect its gold access point with roads.';const cb=b?null:cityAt(p);if(cb?.locked==='permanent')return (cb.n||'This building')+' is a permanently protected historical landmark.';if(cb?.locked==='author')return (cb.n||'This service building')+' has an author-set lock. Only the scenario author can lift it.';if(b)plan.buildings.splice(plan.buildings.indexOf(b),1);else if(cb){plan.removedCity=[...plan.removedCity,cb.id];}else{const r=plan.roads.find(r=>dist(p,projection(p,r.a,r.b))<roadWidth(r)/2+1);if(!r)return 'Select a building or road to remove.';if(r.fixed)return 'The through highway is the fixed entry route. Connect local roads to it.';plan.roads=plan.roads.filter(road=>r.pathId?road.pathId!==r.pathId:road!==r);}changed();const live=junctions();plan.controls=plan.controls.filter(c=>live.some(j=>dist(c,j)<.1));return '';},
+    load(saved){if(saved?.version!==2)return;if(Array.isArray(saved.removedCity)){const known=new Set(city.filter(b=>!b.locked).map(b=>b.id));plan.removedCity=saved.removedCity.filter(id=>known.has(id));}for(const b of saved.buildings||[])if(['residential','office','shop','social','park','parking'].includes(b.type)&&Number.isFinite(b.rotation)&&!buildingError(b))plan.buildings.push(b);for(const r of saved.roads||[])if(roadWidth(r)&&r.a&&r.b&&!roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId))plan.roads.push(r);changed();}
   };
 })();
 window.CITY_LOTS=[];

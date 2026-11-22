@@ -434,7 +434,7 @@ window.CitySim = (() => {
           'Review the outcome of your last order. How will you improve service for the afternoon?');
       }
       if (target && minute === 960 && !service && !relief && target.authority >= 40) dispatch();
-      if (target && minute === 1020 && CityPlan.level>=3 && !leisure.length) {
+      if (target && minute === 1020 && !leisure.length) {
         for (const d of districts) setAuthority(d,-40);
         record('Unresolved complaints are spreading as workers head home. I’m checking every district.',
           'Citywide service alert','Reported','District authority fell across the city.');

@@ -10,10 +10,9 @@ for (const name of ['geography', 'highway-data', 'planner']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'game', name + '.js'), 'utf8'), context, { filename: name + '.js' });
 }
 const { CityPlan: plan, BOSTON_HIGHWAY_DATA: data, BOSTON_GEOGRAPHY: geo } = context;
-for (let level = 1; level <= 4; level++) {
-  plan.seedArcade(level);
-  assert.equal(plan.highwayGates().length, 4, 'both carriageways must enter and exit Level ' + level);
-}
+// One fixed map (the reference screenshot area); there are no levels.
+plan.seedArcade();
+assert.equal(plan.highwayGates().length, 4, 'both carriageways must enter and exit the Boston map');
 const fixed = plan.plan.roads.filter(road => road.fixed);
 const near = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-6, `${message}: ${actual} instead of ${expected}`);
 // Import heights must drive both graph connections and rendered road ribbons.
