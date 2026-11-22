@@ -1,0 +1,19 @@
+# Prettier formats only the browser interface and its tooling; everything else in the
+# repository (Python, data/, docs/, config/, engine files) is ignored. Allowlist:
+/*
+!/aiautonomy/
+/aiautonomy/*
+!/aiautonomy/interfaces/
+!/tests/
+/tests/*
+!/tests/interfaces/
+!/package.json
+!/tsconfig.json
+!/.prettierrc.json
+!/eslint.config.js
+!/vite.config.ts
+!/vitest.config.ts
+!/playwright.config.ts
+
+# Generated from the engine's JSON Schema (npm run gen:protocol).
+/aiautonomy/interfaces/net/protocol.gen.ts
