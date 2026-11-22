@@ -21,4 +21,5 @@ Rules:
 3. If the engine is unreachable, the game uses the civic controller and **labels it on screen** ("engine offline").
 4. Never block the render loop on an LLM call (fetch is async; the sim clock holds while the mayor decides).
 5. Satisfaction is logged before and one hour after each action (`scoreChecks` in `game/sim.js`, `/api/brain/mayor/outcome`).
-6. Add a test in `tests/engines/unit/test_brain.py` for any new backend behaviour.
+6. Never call Ollama directly; use `OllamaClient.chat_json` so the one-model-at-a-time lock and unload apply.
+7. Add a test in `tests/engines/unit/test_brain.py` for any new backend behaviour.

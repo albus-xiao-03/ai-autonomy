@@ -16,6 +16,7 @@ Project: **Boston AI Mayor** (three.js browser game). A local LLM mayor (qwen3:8
 - Use a cloud LLM for residents. Mayor cloud API is optional and off unless `AIA_ALLOW_PAID_API=1`; local qwen3:8b is the default. If the engine is down, show the labeled fallback.
 - Leave extra dev servers running. Game: port 8712. Engine: port 8787. Close temporary ports.
 - Push to GitHub without the user's explicit confirmation, or add AI attribution to commits.
+- Load two Ollama models at once. All model calls go through `aiautonomy/engines/agents/ollama.py` (one lock, unloads other models). Unload models when you finish testing (`ollama stop <model>`).
 - Expand scope. If a request conflicts with SPEC.md, say so and ask.
 
 ## Commands

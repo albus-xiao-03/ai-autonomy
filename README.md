@@ -16,6 +16,8 @@ Open http://127.0.0.1:8712. The browser game owns the city (map, roads, traffic,
 - **Autonomous residents** slider (Events tab): the share of residents who think for themselves with local qwen3:1.7b. They can go home, visit venues, protest, or break a few laws (speeding, vandalism, road blockade). Police patrols stop them.
 - **Satisfaction** is fed to the mayor, shown with a history graph, and logged before and one hour after each mayor action.
 
+Only one model is in memory at a time: the engine makes the mayor and residents take turns and unloads the other model before each call (switching costs a few seconds). Idle models unload after 5 minutes.
+
 If the engine is down, the game keeps running and labels the "Civic controller · engine offline" fallback.
 
 All requirements and status are in `SPEC.md` (Part B holds the teammate's R1 engine requirements). The engine plan is `docs/engine-plan.md`. The teammate's Vite frontend (`npm run dev`) is a separate skeleton.

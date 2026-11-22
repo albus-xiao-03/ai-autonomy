@@ -29,6 +29,7 @@ The demo question: *Can an AI mayor keep a city stable under pressure?*
 - [CHAT, changed 2026-11-22] The mayor's brain is selectable: **local `qwen3:8b` via Ollama (default)**, a rule-based baseline, or an **optional cloud API** (Anthropic). The cloud option is off unless `AIA_ALLOW_PAID_API=1` and `ANTHROPIC_API_KEY` are set where the engine runs.
 - [CHAT] Residents' LLM always runs **locally** (`qwen3:1.7b` via Ollama, loopback only). No cloud for residents.
 - [CHAT] If the engine or model is unavailable, the game must **visibly label** the fallback controller.
+- [CHAT, 2026-11-22] **Only one local model in memory at a time** (MacBook RAM limit). The engine serializes all Ollama calls and unloads any other loaded model before a call, so the mayor (qwen3:8b) and residents (qwen3:1.7b) take turns. Idle models unload after 5 minutes.
 - [CHAT, 2026-11-22] Architecture: the browser game (`game/`, port 8712) owns the physical city. The Python engine (`aia serve`, port 8787, from teammate branch `albus.xiao`) owns decisions via `/api/brain/*`.
 - [CHAT] **No pre-made road blocks or pre-squared land.** The player places roads and buildings freely, like Cities: Skylines.
 - [CHAT] **Non-square land.** The terrain and land shape follow the reference map (rivers, harbor, irregular coastline), not a square grid.
