@@ -10,7 +10,7 @@ Open http://127.0.0.1:8712. Ollama serves the downloaded qwen3:8b model on local
 
 ## Play
 
-Level 1 starts near City Hall with Beacon Hill homes and Government Center offices. Their gold access points need local roads. Connect that network to the fixed entry highway, then run a day and get every resident to work and home. The Next level button unlocks a larger map when the day finishes successfully. Existing roads carry forward.
+Level 1 starts near City Hall with Beacon Hill homes and Government Center offices. Their gold access points need local roads. Connect homes and offices, run a day, and get every resident to work and home. Level completion also requires all placed sites to have road access and all incidents to be resolved. The fixed I-93 ramps are available for connections; a highway connection is not required to finish a level. The Next level button unlocks a larger map when the day finishes successfully. Existing roads carry forward.
 
 Level 2 adds the West End and North End. Level 3 opens the river crossing to Kendall Square, the Financial District and Waterfront. Level 4 opens Charlestown. Neighborhoods use fixed illustrative building clusters.
 
@@ -30,9 +30,19 @@ Ground-road surfaces merge into continuous junctions, with road markings opening
 
 Keyboard controls on the map use arrows for 25-meter cursor movement and Shift arrows for five-meter movement. Enter places the selected building or road endpoint. With Move map selected, arrows pan the view.
 
-Rush-hour through traffic enters and exits along the fixed highway. Cars have low-poly bodies, roofs and wheels. Animation follows directed routes, smooth turns, lane positions and actual bridge/tunnel elevations. Traffic lights alternate crossing directions. Stop signs stop the selected incoming approach, while yield signs slow it. Through lanes maintain a car-length gap at queues. Junction priority and citywide collision physics remain simplified.
+Regional through-traffic is inactive. Resident vehicles use the connected local road network, including I-93 when their route uses it. Cars have low-poly bodies, roofs and wheels. Animation follows directed routes, smooth turns, lane positions and actual bridge/tunnel elevations. Traffic lights alternate crossing directions. Stop signs stop the selected incoming approach, while yield signs slow it. Junction priority and citywide collision physics remain simplified.
 
 The mayor's thought bubble opens the public explanations, orders and outcomes. Model-generated orders are labeled Qwen. Resident routines follow the directed player road network, including driveway access. Leisure trips occur only when a usable route exists.
+
+## Highway verification
+
+I-93 follows the imported MassGIS–MassDOT centerlines with four fixed surface ramps. Tunnel depths and bridge heights are illustrative. Adjacent segments now share the imported elevations; both directed carriageways and all four ramp connections pass routing checks. Regional through-traffic remains disabled.
+
+Run the committed regression from the repository root with Node 18 or newer:
+
+    node tests/highway-elevation.cjs
+
+It checks all 293 imported segments, continuous elevations, map-edge routes, boundaries at all four levels, ramp-to-player-street connections, and the existing player bridge/tunnel profile. It is a numerical routing test. The browser check covered a Cross Street ground-road connection; it does not certify every moving-car visual or junction conflict.
 
 ## Geography
 
@@ -49,6 +59,6 @@ Sources:
 
 Traffic controls can be placed at connected junctions. Select Traffic lights and click the junction. For Stop sign or Yield sign, click the incoming street near that junction. The preview arrow points into the junction and shows the controlled direction. Placing another sign on the same approach replaces it. Bulldoze also removes signs. Controls persist with the plan and participate in Undo.
 
-This prototype does not yet implement zoning, organic city growth, budgets, utilities or full service management. The Qwen mayor currently has dispatch and outreach actions.
+This prototype does not yet implement zoning, organic city growth, budgets, utilities or full service management. The mayor uses dispatch and outreach for the scripted district scenario. Incident responses add repairs, evacuation, mediation and monitoring. These are generic response actions; service capacities, hospital queues, autonomous residents, traffic-management orders and anti-corruption investigations are still missing.
 
-The browser saves progress under borough-levels-v1. Earlier free-placement and arcade saves remain under their previous keys. Timed building deliveries and additional disaster scenarios are pending.
+The browser saves progress under borough-levels-v1. Earlier free-placement and arcade saves remain under their previous keys. Timed building deliveries are pending. The Events tab can trigger flood, severe storm, earthquake, protest and building fire during a running day. Scheduled protests/weather and the noon authority-loss scenario are also implemented. These use arcade closures, damage and response rules, not physical disaster models.

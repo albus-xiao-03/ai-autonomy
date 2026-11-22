@@ -186,7 +186,7 @@ window.CityPlan = (() => {
       const total=projected.slice(1).reduce((sum,p,i)=>sum+dist(projected[i],p),0);
       let offset=0;
       for(let i=1;i<projected.length;i++){
-        const a=projected[i-1],b=projected[i],length=dist(a,b);if(length<.01)continue;
+        const a=projected[i-1],b=projected[i],length=dist(a,b);if(length<1e-6)continue;
         plan.roads.push({id:id+'-'+i,pathId:id,pathStart:offset,pathEnd:offset+length,pathLength:total,
           a,b,type:width>6?'highway':'oneway',width,oneway:true,fixed:true,name,
           tunnel:Math.min(a.height,b.height)<-.75,bridge:Math.max(a.height,b.height)>.75});
@@ -227,6 +227,9 @@ window.CityPlan = (() => {
   }
   function heightAt(p,r) {
     const q=projection(p,r.a,r.b);
+    // Fixed GIS segments already carry their shared portal/deck elevations.
+    // Reusing the player-road ramp profile here creates jumps at segment joins.
+    if(r.fixed&&Number.isFinite(r.a.height)&&Number.isFinite(r.b.height))return r.a.height+(r.b.height-r.a.height)*q.t;
     const along=(r.pathStart||0)+dist(r.a,q),length=r.pathLength||dist(r.a,r.b);
     const rise=Math.min(12,along/3,(length-along)/3);return r.tunnel?-rise:r.bridge?rise:0;
   }
