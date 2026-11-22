@@ -20,6 +20,8 @@ node_modules/
 
 # Run records and exports (docs/engine-plan.md §4.7). Committed fixtures live under tests/engines/.
 /runs/
+# User map saves (docs/contract.md §2). Shipped revisions live in data/maps/.
+/maps/
 *.aia-run.zip
 
 # Secrets never enter the repository (ARCH-05)

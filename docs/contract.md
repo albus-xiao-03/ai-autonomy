@@ -83,11 +83,15 @@ Contract version: **1** (`RunHandle.contract_version`).
 
 | Area | Codes |
 |---|---|
-| Road endpoints | `unknown_node`, `degenerate_road` (endpoints under 10 m apart), `out_of_bounds`, `duplicate_id` |
-| Building and facility access | `unknown_access_road`, `access_too_far` (driveway more than 20 m from the road), `access_on_highway` |
-| Required services | `missing_department` (no PD, FD or medical facility with at least one unit), `unreachable_site` (a site cannot reach every facility over the road graph) |
-| Landmarks | `landmark_overlap` (a building, facility or road inside a landmark footprint), `canonical_landmark_changed`, `canonical_landmark_missing` |
-| Fixed geometry | `fixed_geometry_changed` (I-93 must match the pinned hash) |
+| References | `duplicate_id`, `unknown_node`, `unknown_access_road`, `unknown_landmark`, `unknown_mayor_office` |
+| Roads | `degenerate_road` (endpoints under 10 m apart), `out_of_bounds` (outside the level), `unjoined_crossing` and `unjoined_junction` (the game joins crossings and T junctions itself, so the map must split roads at a shared node) |
+| Driveways (as the game's `access`) | `access_too_far` (more than 20 m from the curb), `access_facing_away` (the road is not in front of the entrance) |
+| Clearance | `landmark_overlap` (a site or road inside a landmark's grounds; tunnels may pass under with portals 50 m clear), `site_overlap`, `road_crosses_site` |
+| Services | `missing_department` (no PD, FD or medical facility with at least one unit), `unreachable_site` (some department cannot reach a site by road), `no_workplace_route` (a home without a road to an office and back) |
+| Canonical entities | `canonical_landmark_missing`, `canonical_landmark_changed`, `canonical_landmark_unknown`, `landmark_site_forbidden`, `canonical_area_missing`, `canonical_area_changed`, `canonical_area_unknown`, `fixed_geometry_missing`, `fixed_geometry_changed`, `fixed_geometry_unknown` |
+| Facility sites | `facility_landmark_forbidden` (only a medical facility may occupy the hospital site), `facility_landmark_mismatch` |
+
+Land and water are checked by the game. `node tests/boston-maps.cjs` runs the game's own validators on the shipped maps.
 
 **Locks**
 
@@ -98,6 +102,9 @@ Contract version: **1** (`RunHandle.contract_version`).
   - turning `locked` off inside `content` without `unlock` (`unlock_not_explicit`)
   - trying to unlock a canonical landmark (`canonical_unlock_forbidden`)
   - changing a landmark's kind (`landmark_kind_changed`)
+- A derived map (`POST /api/maps` with `parent`) is checked against its parent's locks in the same way.
+- Warnings: `unlock_unused` (listed in `unlock` but still locked).
+- Store errors: `unknown_map` (404), and `map_exists`, `read_only_map`, `base_not_latest`, `map_sha_mismatch` or `map_corrupt` (all 409).
 - No run, disruption or mayor order can edit a map.
 
 ## 3. Launching a run

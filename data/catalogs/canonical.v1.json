@@ -1,0 +1,184 @@
+{
+  "id": "canonical",
+  "version": 1,
+  "schema_version": 1,
+  "title": "Canonical Boston entities fixed by the game",
+  "source": "game/planner.js (landmarks, seedArcade areas, stages) and game/highway-data.js; checked by tests/boston-maps.cjs",
+  "levels": [
+    {
+      "level": 1,
+      "min_x": -500,
+      "max_x": 1300,
+      "min_z": 200,
+      "max_z": 1100
+    },
+    {
+      "level": 2,
+      "min_x": -650,
+      "max_x": 1350,
+      "min_z": -250,
+      "max_z": 1100
+    },
+    {
+      "level": 3,
+      "min_x": -1650,
+      "max_x": 1450,
+      "min_z": -450,
+      "max_z": 1335
+    },
+    {
+      "level": 4,
+      "min_x": -1650,
+      "max_x": 1650,
+      "min_z": -1335,
+      "max_z": 1335
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "lm-city-hall",
+      "name": "City Hall",
+      "site": "hall",
+      "x": 600.42,
+      "z": 634.524,
+      "radius": 60
+    },
+    {
+      "id": "lm-td-garden",
+      "name": "TD Garden",
+      "site": "garden",
+      "x": 238.523,
+      "z": -33.396,
+      "radius": 95
+    },
+    {
+      "id": "lm-mass-general",
+      "name": "Mass General",
+      "site": "hospital",
+      "x": -312.548,
+      "z": 389.62,
+      "radius": 55
+    },
+    {
+      "id": "lm-old-north-church",
+      "name": "Old North Church",
+      "site": "church",
+      "x": 863.618,
+      "z": -33.396,
+      "radius": 25
+    },
+    {
+      "id": "lm-quincy-market",
+      "name": "Quincy Market",
+      "site": "market",
+      "x": 888.293,
+      "z": 667.92,
+      "radius": 45
+    },
+    {
+      "id": "lm-boston-common",
+      "name": "Boston Common",
+      "site": "common",
+      "x": -123.374,
+      "z": 1224.52,
+      "radius": 75
+    },
+    {
+      "id": "lm-state-house",
+      "name": "State House",
+      "site": "statehouse",
+      "x": 98.699,
+      "z": 801.504,
+      "radius": 55
+    }
+  ],
+  "areas": [
+    {
+      "id": "beacon",
+      "label": "Beacon Hill",
+      "type": "residential",
+      "x": -230.298,
+      "z": 690.184,
+      "rotation": 3.141592653589793,
+      "radius": 70,
+      "level": 1
+    },
+    {
+      "id": "government",
+      "label": "Government Center",
+      "type": "office",
+      "x": 411.247,
+      "z": 478.676,
+      "rotation": 4.71238898038469,
+      "radius": 70,
+      "level": 1
+    },
+    {
+      "id": "north",
+      "label": "North End",
+      "type": "residential",
+      "x": 904.743,
+      "z": 155.848,
+      "rotation": 4.71238898038469,
+      "radius": 70,
+      "level": 2
+    },
+    {
+      "id": "west",
+      "label": "West End",
+      "type": "residential",
+      "x": -164.499,
+      "z": 133.584,
+      "rotation": 1.5707963267948966,
+      "radius": 70,
+      "level": 2
+    },
+    {
+      "id": "kendall",
+      "label": "Kendall Square",
+      "type": "office",
+      "x": -1381.79,
+      "z": 44.528,
+      "rotation": 1.5707963267948966,
+      "radius": 70,
+      "level": 3
+    },
+    {
+      "id": "financial",
+      "label": "Financial District",
+      "type": "office",
+      "x": 781.369,
+      "z": 1001.88,
+      "rotation": 3.141592653589793,
+      "radius": 70,
+      "level": 3
+    },
+    {
+      "id": "waterfront",
+      "label": "Waterfront",
+      "type": "social",
+      "x": 1077.467,
+      "z": 400.752,
+      "rotation": 4.71238898038469,
+      "radius": 70,
+      "level": 3
+    },
+    {
+      "id": "charles",
+      "label": "Charlestown",
+      "type": "residential",
+      "x": 287.873,
+      "z": -1001.88,
+      "rotation": 0,
+      "radius": 70,
+      "level": 4
+    }
+  ],
+  "fixed": [
+    {
+      "id": "i93",
+      "source": "game/highway-data.js",
+      "sha256": "790e0876769794c2e119c62be3838e2090124d637c07c8d3e99e497c9a48ff8c"
+    }
+  ]
+}

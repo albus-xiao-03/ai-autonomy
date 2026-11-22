@@ -8,7 +8,7 @@ TypeScript frontend lives in `aiautonomy/interfaces/`.
 | Spec component | Package | State in M0 |
 |---|---|---|
 | Three.js frontend | `aiautonomy/interfaces/` | Shell, playback panel |
-| Simulation engine | `aiautonomy.engines.sim` (clock, phases, driver, termination), `aiautonomy.engines.world` (World state, toy world), `aiautonomy.engines.traffic`, `aiautonomy.engines.services`, `aiautonomy.engines.build`, `aiautonomy.engines.finance`, `aiautonomy.engines.residents`, `aiautonomy.engines.politics`, `aiautonomy.engines.host`, `aiautonomy.engines.metrics` | Tick pipeline, toy world and toy metrics |
+| Simulation engine | `aiautonomy.engines.sim` (clock, phases, driver, termination), `aiautonomy.engines.world` (World state, toy world, Boston map catalog, validation, locks and store), `aiautonomy.engines.traffic`, `aiautonomy.engines.services`, `aiautonomy.engines.build`, `aiautonomy.engines.finance`, `aiautonomy.engines.residents`, `aiautonomy.engines.politics`, `aiautonomy.engines.host`, `aiautonomy.engines.metrics` | Tick pipeline, toy world and toy metrics |
 | Action validator | `aiautonomy.engines.mayor` (validator, commit) | Placeholder (M5) |
 | Agent scheduler | `aiautonomy.engines.agents` (scheduler) | Inference-client registry used by replay |
 | Local resident adapter | `aiautonomy.engines.agents` (resident adapter) | Placeholder (M4) |

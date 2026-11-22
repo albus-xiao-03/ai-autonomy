@@ -2,7 +2,8 @@
 
 The root is the nearest ancestor (of this package, else of the working directory) that
 contains both `data/` and `config/`; `AIA_ROOT` overrides the search. Run records go to
-`<root>/runs` unless `AIA_RUNS_DIR` says otherwise (tests use both).
+`<root>/runs` unless `AIA_RUNS_DIR` says otherwise (tests use both); user map saves go to
+`<root>/maps` unless `AIA_MAPS_DIR` says otherwise.
 """
 
 import os
@@ -40,3 +41,16 @@ def runs_dir() -> Path:
     if override:
         return Path(override).resolve()
     return repo_root() / "runs"
+
+
+def maps_dir() -> Path:
+    """Return the user map-save directory: `AIA_MAPS_DIR`, else `<root>/maps`."""
+    override = os.environ.get("AIA_MAPS_DIR")
+    if override:
+        return Path(override).resolve()
+    return repo_root() / "maps"
+
+
+def shipped_maps_dir() -> Path:
+    """Return the read-only shipped map revisions: `<root>/data/maps`."""
+    return repo_root() / "data" / "maps"

@@ -48,7 +48,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except (DataFileError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    options = SessionOptions(runs_dir=_runs_dir(args), overrides=overrides, inference_wait=wait)
+    options = SessionOptions(
+        runs_dir=_runs_dir(args),
+        overrides=overrides,
+        inference_wait=wait,
+        maps_dir=Path(args.maps_dir).resolve() if args.maps_dir else None,
+    )
     uvicorn.run(create_app(options), host=args.host, port=args.port, log_level=args.log_level)
     return 0
 
@@ -128,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--seed", type=int, default=None, help="run seed")
         sub.add_argument("--duration", type=int, default=None, help="run length in ticks")
         sub.add_argument("--runs-dir", default=None, help="run records (default: <root>/runs)")
+        sub.add_argument("--maps-dir", default=None, help="user map saves (default: <root>/maps)")
 
     serve = commands.add_parser("serve", help="run the engine server (loopback only)")
     serve.add_argument("--host", default=DEFAULT_HOST)

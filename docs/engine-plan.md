@@ -2277,8 +2277,8 @@ This appendix is the plan and resume point for the engine work requested in the 
 | # | Feature | Status | Commit | Evidence |
 |---|---|---|---|---|
 | C0 | Plan and agreed product rules (`SPEC.md` Part A) | done | `897a3e2` | Docs only |
-| C1 | Contract v1, examples, generated types | done | (this commit) | `aiautonomy/engines/contract/`, `docs/contract.md`, 7 examples; 162 pytest, schema and types current |
-| C2 | Maps: template, variant, validation, locks, persistence | not started | — | |
+| C1 | Contract v1, examples, generated types | done | `1e8dd65` | `aiautonomy/engines/contract/`, `docs/contract.md`, 7 examples; 162 pytest, schema and types current |
+| C2 | Maps: template, variant, validation, locks, persistence | done | (this commit) | `boston-template` r1 `e368eec2…`, `boston-variant` r1 `6279e42a…`; 212 pytest; `node tests/boston-maps.cjs` (game validators, routes 853→1413 m without the shortcut) |
 | C3 | Ollama lock held until the underlying call finishes | in progress | — | |
 | C4 | Hybrid run core: config, run store, tick pipeline, records, seeded residents | not started | — | |
 | C5 | 911 dispatch | not started | — | |

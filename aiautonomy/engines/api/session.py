@@ -100,6 +100,8 @@ class SessionOptions:
     root: Path | None = None
     publish_interval_s: float = 0.05
     """At max speed, ticks are coalesced into at most one delta per interval."""
+    maps_dir: Path | None = None
+    """User map saves (default `maps_dir()`: `AIA_MAPS_DIR` or `<root>/maps`)."""
 
 
 def _cmd_id_of(text: str) -> str:
