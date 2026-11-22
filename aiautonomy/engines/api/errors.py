@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from aiautonomy.engines.contract.common import ErrorResponse, Failure
+from aiautonomy.engines.hybrid.run import RunError
 from aiautonomy.engines.world.map_store import MapStoreError
 
 
@@ -46,6 +47,14 @@ def install_error_handlers(app: FastAPI) -> None:
         )
         return error_response(exc.status, body)
 
+    async def on_run_error(_request: Request, exc: Exception) -> JSONResponse:
+        assert isinstance(exc, RunError)
+        body = ErrorResponse(
+            error=Failure(code=exc.code, entity_id=exc.entity_id, message=exc.message[:500]),
+            failures=exc.failures,
+        )
+        return error_response(exc.status, body)
+
     async def on_invalid_body(_request: Request, exc: Exception) -> JSONResponse:
         assert isinstance(exc, RequestValidationError)
         failures = [
@@ -64,4 +73,5 @@ def install_error_handlers(app: FastAPI) -> None:
 
     app.add_exception_handler(ApiError, on_api_error)
     app.add_exception_handler(MapStoreError, on_map_error)
+    app.add_exception_handler(RunError, on_run_error)
     app.add_exception_handler(RequestValidationError, on_invalid_body)

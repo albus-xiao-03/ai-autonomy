@@ -21,7 +21,7 @@ from aiautonomy.engines.sim.config import ResolvedConfig
 from aiautonomy.engines.sim.status import RunState
 from aiautonomy.engines.sim.termination import check_termination
 from aiautonomy.engines.world.state import World
-from aiautonomy.engines.world.toy import ToyGrid, create_toy_world
+from aiautonomy.engines.world.toy import ToyGrid, ToyWorldConfig, create_toy_world
 
 
 class RunSink(Protocol):
@@ -69,6 +69,11 @@ class Run:
         stream_seeds: Mapping[str, int] | None = None,
     ) -> None:
         config = resolved.config
+        if not isinstance(config.world, ToyWorldConfig):
+            raise ValueError(
+                f"scenario {config.scenario!r} is driven by the game through /api/runs, "
+                "not by the engine's tick driver"
+            )
         self.run_id = run_id
         self.run_epoch = run_epoch
         self.config = config

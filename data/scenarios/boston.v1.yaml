@@ -1,0 +1,32 @@
+# Hybrid Boston run (docs/contract.md, docs/engine-plan.md Appendix B). The browser game drives
+# the clock and posts one observation per game minute; the engine owns dispatch, decisions,
+# politics and the records. A launch request (POST /api/runs) pins its own map revision and
+# usually overrides population and llm_ratio_bp; these are the defaults.
+id: boston
+version: 1
+schema_version: 1
+title: Boston hybrid day
+description: >-
+  One game day from 06:00 to 22:00 on the Boston template. Standing 911 dispatch runs every
+  tick; the mayor issues exceptional orders; residents can petition, protest and vote.
+
+sim:
+  start_minute_of_day: 360    # the game opens at 06:00
+  duration: 960               # 06:00 to 22:00
+  mayor_interval: 30
+  population: 6               # the Level 1 household of Beacon Hill
+  llm_ratio_bp: 5000
+
+world:
+  kind: boston_hybrid
+  map: {id: boston-template, revision: 1}
+  mayor_latency_ticks: 5      # a mayor reply applies 5 ticks after its observation
+  resident_latency_ticks: 2
+  outcome_window_ticks: 60    # satisfaction "after" is read 60 ticks after the apply tick
+  politics_interval_ticks: 15 # resident moods are required every 15 ticks
+  severe_incident_severity: 60
+  prioritize_ticks: 30
+  automatic_disruptions:
+    first_after_ticks: 60
+    mean_interval_ticks: 240
+    max_per_run: 4

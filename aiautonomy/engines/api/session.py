@@ -50,6 +50,7 @@ from aiautonomy.engines.sim.driver import ArtificialInferenceWait, CommandError,
 from aiautonomy.engines.sim.run import Run, TickResult
 from aiautonomy.engines.sim.status import RunState, Speed, ticks_per_second
 from aiautonomy.engines.world.state import find_entity
+from aiautonomy.engines.world.toy import ToyWorldConfig
 
 log = logging.getLogger(__name__)
 
@@ -321,6 +322,11 @@ class EngineSession:
                     )
                 )
                 resolved = resolve_run_config(overrides, root=self.options.root)
+                if not isinstance(resolved.config.world, ToyWorldConfig):
+                    raise CommandError(
+                        f"scenario {resolved.config.scenario!r} is driven by the game "
+                        "through /api/runs"
+                    )
                 self.overrides = overrides
                 self.driver.abandon("reconfigured")
                 self._replace_run(resolved)

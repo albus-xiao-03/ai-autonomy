@@ -319,7 +319,8 @@ The M1–M9 rows above describe the long-term engine-owns-everything plan. Hybri
 | C0 Agreed rules (Part A) and plan | done (verified) | `897a3e2` | Docs only; `aia trace` parses 108 requirements |
 | C1 Contract v1 and examples | done (verified) | `1e8dd65` | `aiautonomy/engines/contract/`, `docs/contract.md`, 7 examples validated and round-tripped; schema and TS types current |
 | C2 Maps: template, variant, validation, locks, persistence | done (verified) | `3231ac4` | 39 map tests and 3 REST tests; `node tests/boston-maps.cjs` runs the game's validators: catalog matches, every road, driveway and route accepted, shortcut removal 853→1413 m. The game does not load engine maps yet (interface agent) |
-| C3 Ollama lock held until the underlying call finishes | done (verified) | (this commit) | 8 new tests (reset or timeout mid-chat or mid-unload, cancelled waiter, two event loops, keep_alive 5m); they fail on the previous code. Fakes only, no live Ollama check |
+| C3 Ollama lock held until the underlying call finishes | done (verified) | `0d6212c` | 8 new tests (reset or timeout mid-chat or mid-unload, cancelled waiter, two event loops, keep_alive 5m); they fail on the previous code. Fakes only, no live Ollama check |
+| C4 Hybrid run core: launch, tick pipeline, idempotent retries, records, seeded modes | done (verified) | (this commit) | 7 run tests and 9 resident tests: 6 residents at 50 % give exactly 3, seeded, nested and topped up; idempotent reposts; 409 conflict, gap, epoch and ended-run codes; atomic 422; isolation and reset epochs; manifest pins the map. Live `aia serve` smoke on a temporary port. The game does not call these routes yet |
 
 ## 13. Known limits (keep honest)
 
