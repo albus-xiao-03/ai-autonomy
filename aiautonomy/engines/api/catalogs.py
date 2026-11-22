@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 
 from aiautonomy.engines.contract.dispatch import IncidentCatalogView
+from aiautonomy.engines.contract.disruptions import DisruptionCatalogView
 from aiautonomy.engines.hybrid.catalogs import load_catalogs
 
 router = APIRouter(prefix="/api/catalogs")
@@ -24,4 +25,13 @@ async def incident_catalog(request: Request) -> IncidentCatalogView:
     ref = catalogs.refs[0]
     return IncidentCatalogView(
         version=catalogs.dispatch.version, sha256=ref.sha256, kinds=catalogs.dispatch.kinds
+    )
+
+
+@router.get("/disruptions")
+async def disruption_catalog(request: Request) -> DisruptionCatalogView:
+    catalogs = load_catalogs(_root(request))
+    ref = catalogs.refs[1]
+    return DisruptionCatalogView(
+        version=ref.version, sha256=ref.sha256, types=list(catalogs.disruptions)
     )

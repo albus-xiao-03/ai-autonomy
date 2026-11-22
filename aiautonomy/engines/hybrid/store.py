@@ -14,6 +14,7 @@ from pathlib import Path
 
 from aiautonomy.engines.contract.runs import RunLaunchRequest
 from aiautonomy.engines.core.datafiles import DataFileError, DataFileRef
+from aiautonomy.engines.hybrid import disruptions
 from aiautonomy.engines.hybrid.catalogs import load_catalogs
 from aiautonomy.engines.hybrid.run import HybridRun, HybridSink, RunError, RunSetup
 from aiautonomy.engines.mayor.backends import api_available
@@ -88,12 +89,28 @@ class RunStore:
             catalogs = load_catalogs(self.root)
         except (DataFileError, ValueError) as exc:
             raise RunError(422, "invalid_catalog", str(exc)) from exc
+        bounds = catalog.catalog.bounds(revision.content.level)
+        failures = [
+            failure
+            for index, spec in enumerate(request.disruptions.scheduled)
+            for failure in disruptions.check_spec(
+                spec,
+                earliest=disruptions.FIRST_START_TICK,
+                duration=resolved.config.duration,
+                bounds=bounds,
+                entity=f"scheduled[{index}]",
+                require_tick=True,
+            )
+        ]
+        if failures:
+            raise RunError(422, failures[0].code, "a scheduled disruption is not valid", failures)
         return RunSetup(
             request=request,
             config=resolved.config,
             data_files=(*resolved.data_files, canonical_ref, *catalogs.refs, map_ref),
             map_revision=revision,
             catalogs=catalogs,
+            bounds=bounds,
         )
 
     def launch(self, request: RunLaunchRequest) -> HybridRun:

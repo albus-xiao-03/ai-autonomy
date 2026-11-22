@@ -29,6 +29,10 @@ from aiautonomy.engines.contract.common import (
 )
 from aiautonomy.engines.contract.decisions import AuthorityChange
 from aiautonomy.engines.contract.dispatch import Assignment, QueueEntry, Release
+from aiautonomy.engines.contract.disruptions import (
+    DisruptionInjectRequest,
+    DisruptionRecord,
+)
 from aiautonomy.engines.contract.maps import MapRef, MapRevision
 from aiautonomy.engines.contract.politics import (
     PetitionStatus,
@@ -39,6 +43,7 @@ from aiautonomy.engines.contract.politics import (
 from aiautonomy.engines.contract.runs import (
     AuthorityView,
     CatalogRef,
+    IncidentObservation,
     MayorStatus,
     ResidentModes,
     RunConfigView,
@@ -52,11 +57,13 @@ from aiautonomy.engines.core.canonical import StateHash, canonical_json, hash_st
 from aiautonomy.engines.core.datafiles import DataFileRef
 from aiautonomy.engines.core.money import apply_bp
 from aiautonomy.engines.core.rng import KeyedRng, derive_stream_seeds
-from aiautonomy.engines.hybrid import dispatch, residents
+from aiautonomy.engines.hybrid import dispatch, disruptions, residents
 from aiautonomy.engines.hybrid.catalogs import Catalogs
+from aiautonomy.engines.hybrid.disruptions import Disruption
 from aiautonomy.engines.hybrid.state import HybridState, Incident
 from aiautonomy.engines.sim.config import RunConfig
 from aiautonomy.engines.world.boston import BostonWorldConfig
+from aiautonomy.engines.world.maps import LevelBounds
 
 HISTORY_TICKS = 64
 """Processed ticks whose outcome is kept for idempotent reposts."""
@@ -109,6 +116,7 @@ class RunSetup:
     data_files: tuple[DataFileRef, ...]
     map_revision: MapRevision
     catalogs: Catalogs
+    bounds: LevelBounds
 
     @property
     def world(self) -> BostonWorldConfig:
@@ -133,6 +141,8 @@ class TickParts:
     resident_modes: dict[str, bool] = field(default_factory=dict)
     warnings: list[Failure] = field(default_factory=list)
     arrivals: list[tuple[str, str]] = field(default_factory=list)
+    disruptions_started: list[DisruptionRecord] = field(default_factory=list)
+    disruptions_ended: list[DisruptionRecord] = field(default_factory=list)
 
 
 def observation_digest(observation: TickObservation) -> str:
@@ -175,9 +185,40 @@ class HybridRun:
         self.end_reason: str | None = None
         self.sinks: list[HybridSink] = list(sinks)
         self._history: OrderedDict[int, tuple[str, TickOutcome]] = OrderedDict()
+        launch = setup.request.disruptions
+        self.planned = (
+            disruptions.plan_automatic(
+                self.world.automatic_disruptions,
+                config.duration,
+                setup.map_revision.content,
+                setup.bounds,
+                self.rng,
+            )
+            if launch.automatic
+            else []
+        )
+        scheduled = sorted(
+            enumerate(launch.scheduled), key=lambda item: (item[1].at_tick or 0, item[0])
+        )
+        created = [
+            self._create_disruption(
+                spec.type,
+                "scheduled",
+                spec.at_tick or disruptions.FIRST_START_TICK,
+                spec.x,
+                spec.z,
+                spec.radius_m,
+                spec.intensity,
+                spec.duration_ticks,
+                None,
+            )
+            for _, spec in scheduled
+        ]
         self.last_hash: StateHash = hash_state(self.state.to_state())
         for sink in self.sinks:
             sink.on_launch(self)
+        for disruption in created:
+            self._record_disruption(disruption, None)
 
     # --- views -------------------------------------------------------------------------
 
@@ -231,6 +272,7 @@ class HybridRun:
             residents=self.resident_modes(),
             units=[unit.view() for unit in self.state.units.values()],
             catalogs=self.catalog_refs(),
+            scheduled_disruptions=self.scheduled_records(),
         )
 
     def summary(self) -> RunSummary:
@@ -256,6 +298,149 @@ class HybridRun:
             vote=VoteStatus(open=False, eligible=population, retain=0, replace=0),
             protest=ProtestStatus(participants=0, active=False, pressure_ticks=0),
         )
+
+    # --- disruptions --------------------------------------------------------------------
+
+    def _create_disruption(
+        self,
+        kind: str,
+        source: str,
+        start: int,
+        x: float,
+        z: float,
+        radius: int | None,
+        intensity: int | None,
+        duration: int | None,
+        request_id: str | None,
+    ) -> Disruption:
+        spec = self.setup.catalogs.disruption(kind)
+        disruption = Disruption(
+            id=self.state.ids.next_id("dis"),
+            type=kind,
+            source=source,
+            status="scheduled",
+            start_tick=start,
+            end_tick=start + (duration or spec.duration_ticks),
+            x=x,
+            z=z,
+            radius_m=radius or spec.radius_m,
+            intensity=intensity or spec.intensity,
+            incident_id=self.state.ids.next_id("inc"),
+            request_id=request_id,
+            accepted_after_tick=self.state.tick,
+        )
+        self.state.disruptions[disruption.id] = disruption
+        return disruption
+
+    def disruption_record(
+        self, disruption: Disruption, status: str | None = None
+    ) -> DisruptionRecord:
+        spec = self.setup.catalogs.disruption(disruption.type)
+        return disruption.record(spec, self.setup.catalogs, status)  # type: ignore[arg-type]
+
+    def _record_disruption(self, disruption: Disruption, spec_json: dict[str, Any] | None) -> None:
+        entry = {
+            "kind": "disruption",
+            "source": disruption.source,
+            "accepted_after_tick": disruption.accepted_after_tick,
+            "request_id": disruption.request_id,
+            "spec": spec_json,
+            "record": self.disruption_record(disruption).model_dump(mode="json"),
+        }
+        for sink in self.sinks:
+            sink.on_intervention(self, entry)
+
+    def scheduled_records(self) -> list[DisruptionRecord]:
+        return [
+            self.disruption_record(d)
+            for d in self.state.disruptions.values()
+            if d.source == "scheduled"
+        ]
+
+    def mayor_office_outage(self, tick: int) -> bool:
+        """An active outage covers the mayor office at `tick` (the mayor is offline)."""
+        office = disruptions.mayor_office_position(self.setup.map_revision.content)
+        for disruption in self.state.disruptions.values():
+            spec = self.setup.catalogs.disruption(disruption.type)
+            end = disruption.ended_tick
+            if end is None:
+                end = disruption.final_tick(spec)
+            if (
+                spec.effects.mayor_office_outage
+                and disruption.start_tick <= tick < end
+                and disruptions.covers(disruption, *office)
+            ):
+                return True
+        return False
+
+    def inject(self, request: DisruptionInjectRequest) -> tuple[DisruptionRecord, bool]:
+        """Accept a user-injected disruption; reposting the same request id is idempotent."""
+        if request.run_epoch != self.run_epoch:
+            raise RunError(
+                409,
+                "stale_epoch",
+                f"run {self.run_id} is at epoch {self.run_epoch}, not {request.run_epoch}",
+            )
+        spec_json = request.disruption.model_dump(mode="json")
+        digest = hashlib.sha256(canonical_json(spec_json).encode("utf-8")).hexdigest()
+        known = self.state.injections.get(request.request_id)
+        if known is not None:
+            if known[0] != digest:
+                raise RunError(
+                    409, "request_conflict", f"request {request.request_id} had another body"
+                )
+            return self.disruption_record(self.state.disruptions[known[1]]), True
+        if self.status != "running":
+            raise RunError(409, "run_ended", f"run {self.run_id} ended ({self.status})")
+        earliest = self.state.tick + 2
+        failures = disruptions.check_spec(
+            request.disruption,
+            earliest=earliest,
+            duration=self.config.duration,
+            bounds=self.setup.bounds,
+            entity=request.request_id,
+            require_tick=False,
+        )
+        if failures:
+            raise RunError(422, failures[0].code, "the disruption is not valid", failures)
+        spec = request.disruption
+        disruption = self._create_disruption(
+            spec.type,
+            "injected",
+            spec.at_tick if spec.at_tick is not None else earliest,
+            spec.x,
+            spec.z,
+            spec.radius_m,
+            spec.intensity,
+            spec.duration_ticks,
+            request.request_id,
+        )
+        self.state.injections[request.request_id] = (digest, disruption.id)
+        self._record_disruption(disruption, spec_json)
+        return self.disruption_record(disruption), False
+
+    def _announce_disruptions(self, tick: int, parts: TickParts) -> None:
+        """Announce the disruptions starting and ending at tick + 1 (phase 8)."""
+        upcoming = tick + 1
+        for plan in self.planned:
+            if plan.start_tick == upcoming:
+                created = self._create_disruption(
+                    plan.type, "automatic", upcoming, plan.x, plan.z, None, None, None, None
+                )
+                self._record_disruption(created, None)
+        ordered = sorted(self.state.disruptions.values(), key=lambda d: (d.start_tick, d.id))
+        for disruption in ordered:
+            spec = self.setup.catalogs.disruption(disruption.type)
+            if disruption.status == "scheduled" and disruption.start_tick == upcoming:
+                parts.disruptions_started.append(self.disruption_record(disruption))
+            elif disruption.status in ("active", "recovering") and disruption.ended_tick is None:
+                cleared = (
+                    spec.recovery.mode == "on_clear"
+                    and disruption.incident_id in self.state.resolved
+                )
+                if cleared or disruption.final_tick(spec) <= upcoming:
+                    disruption.ended_tick = upcoming
+                    parts.disruptions_ended.append(self.disruption_record(disruption, "ended"))
 
     def mayor_status(self) -> MayorStatus:
         return MayorStatus(
@@ -341,6 +526,7 @@ class HybridRun:
                 )
             if item.id in state.resolved:
                 failures.append(_fail("incident_reopened", item.id, "incident was resolved"))
+            failures.extend(self._check_disruption_incident(item, observation.tick))
             if item.opened_tick > observation.tick:
                 failures.append(_fail("incident_in_future", item.id, "opened after this tick"))
             known = state.incidents.get(item.id)
@@ -396,6 +582,21 @@ class HybridRun:
                     )
         return failures
 
+    def _check_disruption_incident(self, item: IncidentObservation, tick: int) -> list[Failure]:
+        """`inc-` incidents belong to a started disruption of the same kind."""
+        if not item.id.startswith(ENGINE_INCIDENT_PREFIX):
+            if item.disruption_id is not None:
+                return [_fail("disruption_mismatch", item.id, "game- incidents have no disruption")]
+            return []
+        owner = next((d for d in self.state.disruptions.values() if d.incident_id == item.id), None)
+        if owner is None or owner.start_tick > tick:
+            return [_fail("unknown_disruption_incident", item.id, "no started disruption owns it")]
+        if item.kind != self.setup.catalogs.disruption(owner.type).incident.kind:
+            return [_fail("incident_kind_mismatch", item.id, f"{owner.id} spawns {owner.type}")]
+        if item.disruption_id is not None and item.disruption_id != owner.id:
+            return [_fail("disruption_mismatch", item.id, f"the incident belongs to {owner.id}")]
+        return []
+
     def validate_unit_events(self, observation: TickObservation) -> list[Failure]:
         """Unit events must follow the engine's assignments (dispatch rules)."""
         return dispatch.validate_events(self.state, observation)
@@ -417,6 +618,18 @@ class HybridRun:
 
     def phase_events_and_timers(self, tick: int, parts: TickParts) -> None:
         """Phase 1: activate disruptions and resolve due timers."""
+        for disruption in self.state.disruptions.values():
+            spec = self.setup.catalogs.disruption(disruption.type)
+            if disruption.status == "scheduled" and disruption.start_tick <= tick:
+                disruption.status = "active"
+            if disruption.ended_tick is not None and disruption.ended_tick <= tick:
+                disruption.status = "ended"
+            elif (
+                disruption.status == "active"
+                and spec.recovery.mode == "gradual"
+                and tick >= disruption.end_tick
+            ):
+                disruption.status = "recovering"
 
     def phase_infrastructure(self, observation: TickObservation, parts: TickParts) -> None:
         """Phase 2: accept the incidents and unit availability the game observed."""
@@ -491,7 +704,9 @@ class HybridRun:
     def publish(
         self, tick: int, status: RunStatusLabel, parts: TickParts
     ) -> tuple[TickOutcome, StateHash]:
-        """Phase 8: hash the state and build the outcome."""
+        """Phase 8: announce the next tick's disruptions, hash the state, build the outcome."""
+        if status == "running":
+            self._announce_disruptions(tick, parts)
         state_hash = hash_state(self.state.to_state())
         self.last_hash = state_hash
         outcome = TickOutcome(
@@ -505,6 +720,8 @@ class HybridRun:
             releases=parts.releases,
             queue=parts.queue,
             resident_modes=parts.resident_modes,
+            disruptions_started=parts.disruptions_started,
+            disruptions_ended=parts.disruptions_ended,
             authority=AuthorityView(value=self.state.authority, changes=parts.authority_changes),
             politics=self.politics_status(),
             mayor=self.mayor_status(),

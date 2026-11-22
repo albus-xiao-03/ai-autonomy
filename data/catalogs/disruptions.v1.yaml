@@ -1,0 +1,86 @@
+# The seven disruption types (docs/contract.md §8, SPEC.md Part A §9). PROPOSED effect and
+# recovery values: confirm with the interface agent, which applies the physical effects in the game.
+#
+# Effects apply while a disruption is active:
+#   speed_multiplier_bp  travel speed in scope, basis points (10000 = unchanged). Overlapping
+#                        disruptions multiply, in start-tick then id order.
+#   scope                area: within radius_m of the location; citywide: everywhere.
+#   closes_roads / closes_tunnels / closes_low_roads / signals_out / damage_pct
+#                        always apply within radius_m of the location.
+#   mayor_office_outage  the mayor is offline while active if the mayor office is within radius_m.
+# Recovery: on_duration ends at start + duration_ticks; on_clear ends when its incident is
+# resolved (at start + duration_ticks at the latest); gradual keeps gradual_speed_multiplier_bp
+# for gradual_ticks after the duration. `lasting` consequences persist after the end.
+# Each disruption spawns one incident of the same kind; its needs and default severity come
+# from data/catalogs/dispatch.v1.yaml, scaled by intensity / 50.
+id: disruptions
+version: 1
+schema_version: 1
+title: Disruption types and their effects
+types:
+  - id: traffic
+    label: Traffic
+    description: A crash or gridlock slows every street around the location until police clear it.
+    radius_m: 120
+    intensity: 50
+    duration_ticks: 45
+    effects: {scope: area, speed_multiplier_bp: 4000, closes_roads: false, closes_tunnels: false,
+              closes_low_roads: false, signals_out: false, damage_pct: 0, mayor_office_outage: false}
+    recovery: {mode: on_clear, lasting: []}
+  - id: outage
+    label: Outage
+    description: A power interruption darkens traffic signals and buildings in the area.
+    radius_m: 250
+    intensity: 50
+    duration_ticks: 90
+    effects: {scope: area, speed_multiplier_bp: 8000, closes_roads: false, closes_tunnels: false,
+              closes_low_roads: false, signals_out: true, damage_pct: 0, mayor_office_outage: true}
+    recovery: {mode: on_duration, lasting: []}
+  - id: gas_leakage
+    label: Gas Leakage
+    description: A gas leak closes the streets around it until firefighters make the area safe.
+    radius_m: 80
+    intensity: 50
+    duration_ticks: 120
+    effects: {scope: area, speed_multiplier_bp: 10000, closes_roads: true, closes_tunnels: false,
+              closes_low_roads: false, signals_out: false, damage_pct: 0, mayor_office_outage: false}
+    recovery: {mode: on_clear, lasting: []}
+  - id: flood
+    label: Flood
+    description: Water closes tunnels and low roads and damages buildings; damage outlasts the water.
+    radius_m: 150
+    intensity: 50
+    duration_ticks: 180
+    effects: {scope: area, speed_multiplier_bp: 6000, closes_roads: false, closes_tunnels: true,
+              closes_low_roads: true, signals_out: false, damage_pct: 25, mayor_office_outage: false}
+    recovery: {mode: on_duration, lasting: [building_damage]}
+  - id: storm
+    label: Storm
+    description: Wind and rain slow travel citywide and damage buildings near the storm's centre.
+    radius_m: 125
+    intensity: 50
+    duration_ticks: 120
+    effects: {scope: citywide, speed_multiplier_bp: 7000, closes_roads: false,
+              closes_tunnels: false, closes_low_roads: false, signals_out: false, damage_pct: 15,
+              mayor_office_outage: false}
+    recovery: {mode: on_duration, lasting: [building_damage]}
+  - id: snowstorm
+    label: Snowstorm
+    description: Snow halves travel speed citywide; roads stay slow while they are cleared.
+    radius_m: 100
+    intensity: 50
+    duration_ticks: 240
+    effects: {scope: citywide, speed_multiplier_bp: 5000, closes_roads: false,
+              closes_tunnels: false, closes_low_roads: false, signals_out: false, damage_pct: 0,
+              mayor_office_outage: false}
+    recovery: {mode: gradual, gradual_ticks: 60, gradual_speed_multiplier_bp: 7500, lasting: []}
+  - id: heavy_rain
+    label: Heavy Rain
+    description: Heavy rain slows travel citywide and floods tunnels near its centre.
+    radius_m: 100
+    intensity: 50
+    duration_ticks: 90
+    effects: {scope: citywide, speed_multiplier_bp: 8000, closes_roads: false,
+              closes_tunnels: true, closes_low_roads: false, signals_out: false, damage_pct: 0,
+              mayor_office_outage: false}
+    recovery: {mode: on_duration, lasting: []}

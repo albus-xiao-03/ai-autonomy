@@ -5,7 +5,7 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 
 | Requirements | Covered | Implementation only | Tests only | Missing |
 |---:|---:|---:|---:|---:|
-| 108 | 22 | 16 | 1 | 69 |
+| 108 | 27 | 15 | 3 | 63 |
 
 | ID | Title | Implementation | Tests | Status |
 |---|---|---|---|---|
@@ -63,22 +63,22 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | HOST-02 | States | — | — | missing |
 | HOST-03 | Backup power | — | — | missing |
 | HOST-04 | Protest effects | — | — | missing |
-| HOST-05 | API enforcement | — | — | missing |
+| HOST-05 | API enforcement | — | `tests/engines/integration/test_disruptions.py::test_an_outage_over_city_hall_takes_the_mayor_office_offline` | tests only |
 | HOST-06 | City continuity | — | — | missing |
 | HOST-07 | Recovery | — | — | missing |
 | HOST-08 | Resident independence | — | — | missing |
-| EVT-01 | Required event families | `aiautonomy/engines/contract/disruptions.py` | `tests/engines/unit/test_contract.py::test_exactly_seven_disruption_types` | covered |
-| EVT-02 | Event definition | `aiautonomy/engines/api/catalogs.py`<br>`aiautonomy/engines/contract/disruptions.py` | — | implementation only |
-| EVT-03 | Physical and economic consequences | — | — | missing |
+| EVT-01 | Required event families | `aiautonomy/engines/contract/disruptions.py`<br>`aiautonomy/engines/hybrid/catalogs.py`<br>`aiautonomy/engines/hybrid/disruptions.py` | `tests/engines/integration/test_disruptions.py::test_catalog_lists_exactly_the_seven_types`<br>`tests/engines/integration/test_disruptions.py::test_each_disruption_starts_spawns_dispatch_and_ends`<br>`tests/engines/unit/test_contract.py::test_exactly_seven_disruption_types` | covered |
+| EVT-02 | Event definition | `aiautonomy/engines/api/catalogs.py`<br>`aiautonomy/engines/contract/disruptions.py`<br>`aiautonomy/engines/hybrid/catalogs.py`<br>`aiautonomy/engines/hybrid/disruptions.py` | `tests/engines/integration/test_disruptions.py::test_automatic_disruptions_are_seeded_and_hidden_until_announced`<br>`tests/engines/integration/test_disruptions.py::test_catalog_lists_exactly_the_seven_types`<br>`tests/engines/integration/test_disruptions.py::test_disruption_incidents_must_match_their_disruption`<br>`tests/engines/integration/test_disruptions.py::test_each_disruption_starts_spawns_dispatch_and_ends` | covered |
+| EVT-03 | Physical and economic consequences | `aiautonomy/engines/hybrid/disruptions.py` | `tests/engines/integration/test_disruptions.py::test_an_outage_over_city_hall_takes_the_mayor_office_offline` | covered |
 | EVT-04 | Positive-event tradeoffs | — | — | missing |
-| EVT-05 | Lasting consequences | — | — | missing |
-| CUSTOM-01 | Creation and injection | `aiautonomy/engines/contract/disruptions.py` | — | implementation only |
+| EVT-05 | Lasting consequences | `aiautonomy/engines/hybrid/disruptions.py` | `tests/engines/integration/test_disruptions.py::test_each_disruption_starts_spawns_dispatch_and_ends` | covered |
+| CUSTOM-01 | Creation and injection | `aiautonomy/engines/contract/disruptions.py`<br>`aiautonomy/engines/hybrid/disruptions.py` | `tests/engines/integration/test_disruptions.py::test_injection_starts_two_ticks_later_and_is_idempotent`<br>`tests/engines/integration/test_disruptions.py::test_scheduled_disruptions_are_validated_at_launch` | covered |
 | CUSTOM-02 | Composition | — | — | missing |
-| CUSTOM-03 | Description versus mechanics | — | — | missing |
+| CUSTOM-03 | Description versus mechanics | `aiautonomy/engines/hybrid/disruptions.py` | — | implementation only |
 | CUSTOM-04 | Indirect influence | — | — | missing |
 | CUSTOM-05 | Editor | — | — | missing |
-| CUSTOM-06 | Interaction and stacking | — | — | missing |
-| CUSTOM-07 | Recording | `aiautonomy/engines/contract/disruptions.py`<br>`aiautonomy/engines/record/hybrid.py` | — | implementation only |
+| CUSTOM-06 | Interaction and stacking | `aiautonomy/engines/hybrid/disruptions.py` | — | implementation only |
+| CUSTOM-07 | Recording | `aiautonomy/engines/contract/disruptions.py`<br>`aiautonomy/engines/hybrid/disruptions.py`<br>`aiautonomy/engines/record/hybrid.py` | `tests/engines/integration/test_disruptions.py::test_each_disruption_starts_spawns_dispatch_and_ends`<br>`tests/engines/integration/test_disruptions.py::test_injection_starts_two_ticks_later_and_is_idempotent` | covered |
 | POL-01 | Separate political state | `aiautonomy/engines/contract/politics.py` | — | implementation only |
 | POL-02 | Independent organization | — | — | missing |
 | POL-03 | Removal mechanisms | `aiautonomy/engines/contract/politics.py` | — | implementation only |
@@ -114,6 +114,6 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | VIS-03 | Visible state | — | — | missing |
 | VIS-04 | Required panels | `aiautonomy/interfaces/net/commands.ts`<br>`aiautonomy/interfaces/net/session.ts`<br>`aiautonomy/interfaces/ui/TopBar.tsx`<br>`aiautonomy/interfaces/ui/panels/PlaybackPanel.tsx`<br>`aiautonomy/interfaces/ui/panels/playback.ts`<br>`aiautonomy/interfaces/ui/panels/registry.ts` | `tests/interfaces/commands.test.ts`<br>`tests/interfaces/e2e/smoke.spec.ts`<br>`tests/interfaces/playback.test.ts`<br>`tests/interfaces/session.test.ts` | covered |
 | EVAL-01 | Baseline mayor | — | — | missing |
-| EVAL-02 | Matched comparisons | — | — | missing |
+| EVAL-02 | Matched comparisons | — | `tests/engines/integration/test_disruptions.py::test_automatic_disruptions_are_seeded_and_hidden_until_announced` | tests only |
 | EVAL-03 | Required demonstrations | — | — | missing |
 | EVAL-04 | Replay fidelity | `aiautonomy/engines/agents/clients.py`<br>`aiautonomy/engines/cli.py`<br>`aiautonomy/engines/core/canonical.py`<br>`aiautonomy/engines/metrics/toy.py`<br>`aiautonomy/engines/record/hybrid.py`<br>`aiautonomy/engines/record/recorder.py`<br>`aiautonomy/engines/record/replay.py` | `tests/engines/integration/test_recorder.py::test_a_completed_run_writes_every_record`<br>`tests/engines/scenarios/test_toy_replay.py`<br>`tests/engines/unit/test_core_canonical.py::test_state_hash_is_blake2b_of_canonical_json_and_excludes_run_id` | covered |

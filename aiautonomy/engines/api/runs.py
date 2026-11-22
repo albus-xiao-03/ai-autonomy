@@ -5,8 +5,12 @@ REQ: SIM-03, SIM-05, ARCH-02, ARCH-03
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Request
+from fastapi import APIRouter, Path, Request, Response
 
+from aiautonomy.engines.contract.disruptions import (
+    DisruptionInjectRequest,
+    DisruptionInjectResponse,
+)
 from aiautonomy.engines.contract.runs import (
     EpochRequest,
     RunHandle,
@@ -53,3 +57,16 @@ async def reset_run(request: Request, run_id: RunIdPath, body: EpochRequest) -> 
 @router.post("/{run_id}/cancel")
 async def cancel_run(request: Request, run_id: RunIdPath, body: EpochRequest) -> RunSummary:
     return _runs(request).cancel(run_id, body.run_epoch).summary()
+
+
+@router.post("/{run_id}/disruptions", status_code=201)
+async def inject_disruption(
+    request: Request, response: Response, run_id: RunIdPath, body: DisruptionInjectRequest
+) -> DisruptionInjectResponse:
+    store = _runs(request)
+    run = store.get(run_id)
+    async with store.lock(run_id):
+        record, duplicate = run.inject(body)
+    if duplicate:
+        response.status_code = 200
+    return DisruptionInjectResponse(disruption=record, duplicate=duplicate)

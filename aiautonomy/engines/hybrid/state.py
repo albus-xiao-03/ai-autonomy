@@ -18,6 +18,7 @@ from aiautonomy.engines.contract.dispatch import UnitView
 from aiautonomy.engines.contract.maps import MapContent
 from aiautonomy.engines.contract.runs import IncidentObservation
 from aiautonomy.engines.core.ids import IdCounters
+from aiautonomy.engines.hybrid.disruptions import Disruption
 
 
 @dataclass(slots=True)
@@ -128,6 +129,9 @@ class HybridState:
     resolved: dict[str, int] = field(default_factory=dict)
     satisfaction: float | None = None
     ids: IdCounters = field(default_factory=IdCounters)
+    disruptions: dict[str, Disruption] = field(default_factory=dict)
+    injections: dict[str, tuple[str, str]] = field(default_factory=dict)
+    """Injection request id → (body digest, disruption id), for idempotent reposts."""
 
     @classmethod
     def initial(
@@ -161,4 +165,10 @@ class HybridState:
             "authority": {"value": self.authority},
             "metrics": {"satisfaction": self.satisfaction},
             "ids": self.ids.to_state(),
+            "disruptions": {
+                "records": {
+                    did: self.disruptions[did].to_state() for did in sorted(self.disruptions)
+                },
+                "injections": {rid: list(self.injections[rid]) for rid in sorted(self.injections)},
+            },
         }

@@ -269,29 +269,37 @@ There are exactly seven types: `traffic`, `outage`, `gas_leakage`, `flood`, `sto
 
 **Sources**
 
-- `automatic`: seeded at launch from the run's external-event stream, and hidden until it starts.
-- `scheduled`: from the launch request.
-- `injected`: `POST /api/runs/{run_id}/disruptions` with a `DisruptionInjectRequest`, answered by a `DisruptionInjectResponse`. It starts at the next tick boundary. Reposting the same `request_id` returns the same record with `duplicate: true`.
+- `automatic`: planned at launch from the run's external-event stream (type, site and the gap to the next one), and hidden until it is announced.
+- `scheduled`: from the launch request. `at_tick` is required, between 2 and the duration.
+- `injected`: `POST /api/runs/{run_id}/disruptions` with a `DisruptionInjectRequest`, answered by a `DisruptionInjectResponse`.
+  - It starts at `last processed tick + 2`, the earliest start the outcome channel can announce, or at a later `at_tick`.
+  - Reposting the same `request_id` with the same body returns the same record with `duplicate: true` (HTTP 200). A different body answers 409 `request_conflict`.
+  - Post injections between ticks, never while a tick request is in flight.
 
-Every disruption is recorded with its start tick.
+Every disruption is recorded in `interventions.jsonl`: scheduled ones at launch, injected ones when accepted (with `accepted_after_tick` and the request), automatic ones when announced.
 
-**How the game applies a disruption.** When a `DisruptionRecord` appears in `disruptions_started`, the game applies it from `start_tick`:
+**Timing.** The outcome of tick `t` lists in `disruptions_started` every disruption whose `start_tick` is `t + 1`, and in `disruptions_ended` every disruption whose effects end at `t + 1`. The game applies both from `t + 1`.
 
-- Spawn its incident with id `incident_id` (kind, severity and needs in `incident`).
-- Apply `effects` inside the scope while the disruption is active:
-  - speed multiplier
-  - road, tunnel and low-road closures
-  - signals out
-  - one-time damage
-- Travel times the game reports in `routes` must include these effects. For example, a storm lowers speed citywide, so EMS `travel_ticks` grow.
+**How the game applies a disruption.** From `start_tick`, the game:
+
+- Spawns its incident with id `incident_id` (kind, severity and needs in `incident`). It reports that incident from then on.
+  - The engine refuses an `inc-…` incident that no started disruption owns (`unknown_disruption_incident`), one of another kind (`incident_kind_mismatch`), and a wrong `disruption_id` (`disruption_mismatch`).
+- Applies `effects` while the disruption is active:
+  - The speed multiplier applies within `scope`: the radius around the location (`area`), or everywhere (`citywide`).
+  - Closures, signals out and the one-time damage always apply within `radius_m`.
+- Includes these effects in the travel times it reports in `routes`. For example, a storm lowers speed citywide, so EMS `travel_ticks` grow.
+
+**Overlapping disruptions (CUSTOM-06).** Speed multipliers multiply, in start-tick then id order, and closures are a union. Ending one disruption removes only its own contributions.
 
 **Recovery**
 
 - `on_duration`: ends at `end_tick`.
-- `on_clear`: ends when its incident is cleared or resolved, or at `end_tick` at the latest.
-- `gradual`: after `end_tick` the speed stays reduced for `gradual_ticks`.
+- `on_clear`: ends as soon as its incident is resolved, or at `end_tick` at the latest.
+- `gradual`: after `end_tick` the speed stays at `gradual_speed_multiplier_bp` for `gradual_ticks`; the disruption is `recovering` meanwhile.
 
-The end appears in `disruptions_ended`. Consequences listed in `recovery.lasting` (such as building damage) persist after the end.
+Consequences listed in `recovery.lasting` (such as building damage) persist after the end. A disruption never removes, moves or relabels a landmark; damage changes condition only.
+
+**Mayor-office outage.** An `outage` whose radius covers `mayor_office` takes the mayor offline while it is active (§6).
 
 ## 9. Politics and endings
 
