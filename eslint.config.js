@@ -6,9 +6,10 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-// Model-written text arrives in later milestones and must stay plain text (docs/engine-plan.md §5.12):
-// these selectors forbid every way of turning a string into markup.
-const PLAIN_TEXT_ONLY = 'Render text with Preact text nodes or textContent (docs/engine-plan.md §5.12).';
+// Model-written text arrives in later milestones and must stay plain text
+// (docs/engine-plan.md §5.12): these selectors forbid every way of turning a string into markup.
+const PLAIN_TEXT_ONLY =
+  'Render text with Preact text nodes or textContent (docs/engine-plan.md §5.12).';
 const unsafeHtml = [
   {
     selector: 'MemberExpression[property.name=/^(innerHTML|outerHTML)$/]',
