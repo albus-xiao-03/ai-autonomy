@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "AiaProtocol",
-  "description": "AI Autonomy engine-frontend protocol (docs/engine-plan.md §4.8). One WebSocket at /ws carries JSON text frames discriminated by `type`. Generated from aiautonomy.engines.api.protocol; do not edit.",
+  "description": "AI Autonomy engine-frontend protocol (docs/engine-plan.md §4.8). One WebSocket at /ws carries JSON text frames discriminated by `type`. The hybrid game contract (docs/contract.md) adds the REST bodies under /api/maps, /api/runs and /api/catalogs. Generated from aiautonomy.engines.api.protocol and aiautonomy.engines.contract; do not edit.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -13,9 +13,89 @@
     },
     "health": {
       "$ref": "#/$defs/HealthResponse"
+    },
+    "map_list": {
+      "$ref": "#/$defs/MapList"
+    },
+    "map_revision": {
+      "$ref": "#/$defs/MapRevision"
+    },
+    "map_create_request": {
+      "$ref": "#/$defs/MapCreateRequest"
+    },
+    "map_revision_request": {
+      "$ref": "#/$defs/MapRevisionRequest"
+    },
+    "map_validate_request": {
+      "$ref": "#/$defs/MapValidateRequest"
+    },
+    "map_validation_report": {
+      "$ref": "#/$defs/MapValidationReport"
+    },
+    "run_launch_request": {
+      "$ref": "#/$defs/RunLaunchRequest"
+    },
+    "run_handle": {
+      "$ref": "#/$defs/RunHandle"
+    },
+    "epoch_request": {
+      "$ref": "#/$defs/EpochRequest"
+    },
+    "run_summary": {
+      "$ref": "#/$defs/RunSummary"
+    },
+    "tick_observation": {
+      "$ref": "#/$defs/TickObservation"
+    },
+    "tick_outcome": {
+      "$ref": "#/$defs/TickOutcome"
+    },
+    "disruption_inject_request": {
+      "$ref": "#/$defs/DisruptionInjectRequest"
+    },
+    "disruption_inject_response": {
+      "$ref": "#/$defs/DisruptionInjectResponse"
+    },
+    "disruption_catalog": {
+      "$ref": "#/$defs/DisruptionCatalogView"
+    },
+    "incident_catalog": {
+      "$ref": "#/$defs/IncidentCatalogView"
+    },
+    "resident_decision_request": {
+      "$ref": "#/$defs/ResidentDecisionRequest"
+    },
+    "resident_decision_accepted": {
+      "$ref": "#/$defs/ResidentDecisionAccepted"
+    },
+    "mayor_decision_record": {
+      "$ref": "#/$defs/MayorDecisionRecord"
+    },
+    "order_record": {
+      "$ref": "#/$defs/OrderRecord"
+    },
+    "error_response": {
+      "$ref": "#/$defs/ErrorResponse"
     }
   },
   "$defs": {
+    "Access": {
+      "additionalProperties": false,
+      "description": "Where a building's or facility's driveway joins the road network.",
+      "properties": {
+        "road": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "road"
+      ],
+      "title": "Access",
+      "type": "object"
+    },
     "AckMessage": {
       "additionalProperties": false,
       "description": "The immediate answer to exactly one command.",
@@ -60,6 +140,237 @@
         "result"
       ],
       "title": "AckMessage",
+      "type": "object"
+    },
+    "ActionOption": {
+      "additionalProperties": false,
+      "description": "One permitted mayor action, derived from the recorded incident and unit state.",
+      "properties": {
+        "id": {
+          "pattern": "^(A[0-9]{1,3}|HOLD)$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "dispatch",
+            "prioritize",
+            "hold"
+          ],
+          "type": "string"
+        },
+        "department": {
+          "anyOf": [
+            {
+              "enum": [
+                "police",
+                "fire",
+                "medical"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "incident_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "units": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "maxLength": 200,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "summary"
+      ],
+      "title": "ActionOption",
+      "type": "object"
+    },
+    "Arrival": {
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unit_id",
+        "tick"
+      ],
+      "title": "Arrival",
+      "type": "object"
+    },
+    "Assignment": {
+      "additionalProperties": false,
+      "description": "A unit committed to an incident; the game starts moving it at `effective_tick`.",
+      "properties": {
+        "unit_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "department": {
+          "enum": [
+            "police",
+            "fire",
+            "medical"
+          ],
+          "type": "string"
+        },
+        "incident_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "routine",
+            "order"
+          ],
+          "type": "string"
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "travel_ticks": {
+          "description": "As reported by the game graph.",
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "assigned_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "eta_tick": {
+          "description": "effective tick + travel ticks.",
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unit_id",
+        "department",
+        "incident_id",
+        "origin",
+        "travel_ticks",
+        "assigned_tick",
+        "eta_tick"
+      ],
+      "title": "Assignment",
+      "type": "object"
+    },
+    "AuthorityChange": {
+      "additionalProperties": false,
+      "description": "One change of political authority (0–100). Satisfaction never changes authority.",
+      "properties": {
+        "tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "delta": {
+          "type": "integer"
+        },
+        "value": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "enum": [
+            "excess_order",
+            "protest_pressure",
+            "recovery"
+          ],
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "tick",
+        "delta",
+        "value",
+        "reason"
+      ],
+      "title": "AuthorityChange",
+      "type": "object"
+    },
+    "AuthorityView": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/AuthorityChange"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "AuthorityView",
       "type": "object"
     },
     "Bounds": {
@@ -107,6 +418,31 @@
         "cmd_id"
       ],
       "title": "CancelCommand",
+      "type": "object"
+    },
+    "CatalogRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "path",
+        "sha256"
+      ],
+      "title": "CatalogRef",
       "type": "object"
     },
     "Change": {
@@ -239,6 +575,61 @@
       "title": "ConfigureCommand",
       "type": "object"
     },
+    "DecisionEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "run_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "actor_id": {
+          "pattern": "^(mayor|resident:[0-9]{1,7})$",
+          "type": "string"
+        },
+        "decision_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "observation_id": {
+          "description": "SHA-256 of the canonical observation.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observation_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "apply_tick": {
+          "description": "Fixed at request time; never wall-clock dependent.",
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schema_version": {
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "run_epoch",
+        "actor_id",
+        "decision_id",
+        "observation_id",
+        "observation_tick",
+        "apply_tick"
+      ],
+      "title": "DecisionEnvelope",
+      "type": "object"
+    },
     "DecisionMessage": {
       "additionalProperties": false,
       "description": "A recorded model decision (first emitted in M4/M5).",
@@ -338,6 +729,491 @@
       "title": "DeltaMessage",
       "type": "object"
     },
+    "DisruptionCatalogView": {
+      "additionalProperties": false,
+      "description": "`GET /api/catalogs/disruptions`.",
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "types": {
+          "items": {
+            "$ref": "#/$defs/DisruptionTypeSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "version",
+        "sha256",
+        "types"
+      ],
+      "title": "DisruptionCatalogView",
+      "type": "object"
+    },
+    "DisruptionEffects": {
+      "additionalProperties": false,
+      "description": "Physical effects the game applies while the disruption is active.",
+      "properties": {
+        "scope": {
+          "description": "`area`: within radius_m of (x, z).",
+          "enum": [
+            "area",
+            "citywide"
+          ],
+          "type": "string"
+        },
+        "speed_multiplier_bp": {
+          "description": "Travel speed in scope, basis points (10000 = unchanged).",
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "closes_roads": {
+          "description": "Close every road segment within the radius.",
+          "type": "boolean"
+        },
+        "closes_tunnels": {
+          "description": "Close tunnel segments within the radius.",
+          "type": "boolean"
+        },
+        "closes_low_roads": {
+          "description": "Close segments below ground level in radius.",
+          "type": "boolean"
+        },
+        "signals_out": {
+          "description": "Traffic signals in the radius behave as stop signs.",
+          "type": "boolean"
+        },
+        "damage_pct": {
+          "description": "One-time building damage at onset.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mayor_office_outage": {
+          "description": "The mayor is offline while active if the mayor office is in scope.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scope",
+        "speed_multiplier_bp",
+        "closes_roads",
+        "closes_tunnels",
+        "closes_low_roads",
+        "signals_out",
+        "damage_pct",
+        "mayor_office_outage"
+      ],
+      "title": "DisruptionEffects",
+      "type": "object"
+    },
+    "DisruptionInjectRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/runs/{run_id}/disruptions`. Reposting the same `request_id` is idempotent.",
+      "properties": {
+        "run_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "request_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "type": "string"
+        },
+        "disruption": {
+          "$ref": "#/$defs/DisruptionSpec"
+        }
+      },
+      "required": [
+        "run_epoch",
+        "request_id",
+        "disruption"
+      ],
+      "title": "DisruptionInjectRequest",
+      "type": "object"
+    },
+    "DisruptionInjectResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "disruption": {
+          "$ref": "#/$defs/DisruptionRecord"
+        },
+        "duplicate": {
+          "description": "True when this request_id was already accepted.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "disruption",
+        "duplicate"
+      ],
+      "title": "DisruptionInjectResponse",
+      "type": "object"
+    },
+    "DisruptionRecord": {
+      "additionalProperties": false,
+      "description": "A disruption of record. Severity = template severity × intensity / 50, clamped.",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "traffic",
+            "outage",
+            "gas_leakage",
+            "flood",
+            "storm",
+            "snowstorm",
+            "heavy_rain"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "automatic",
+            "scheduled",
+            "injected"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "scheduled",
+            "active",
+            "recovering",
+            "ended"
+          ],
+          "type": "string"
+        },
+        "start_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "end_tick": {
+          "description": "Planned end (latest end for `on_clear`).",
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "x": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "z": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "radius_m": {
+          "type": "integer"
+        },
+        "intensity": {
+          "type": "integer"
+        },
+        "effects": {
+          "$ref": "#/$defs/DisruptionEffects"
+        },
+        "recovery": {
+          "$ref": "#/$defs/Recovery"
+        },
+        "incident_id": {
+          "description": "Id the game must give the spawned incident.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "incident": {
+          "$ref": "#/$defs/IncidentTemplate"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "source",
+        "status",
+        "start_tick",
+        "end_tick",
+        "x",
+        "z",
+        "radius_m",
+        "intensity",
+        "effects",
+        "recovery",
+        "incident_id",
+        "incident"
+      ],
+      "title": "DisruptionRecord",
+      "type": "object"
+    },
+    "DisruptionSpec": {
+      "additionalProperties": false,
+      "description": "A scheduled or injected disruption; omitted values take the catalog defaults.",
+      "properties": {
+        "type": {
+          "enum": [
+            "traffic",
+            "outage",
+            "gas_leakage",
+            "flood",
+            "storm",
+            "snowstorm",
+            "heavy_rain"
+          ],
+          "type": "string"
+        },
+        "x": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "z": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "radius_m": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 10,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intensity": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_ticks": {
+          "anyOf": [
+            {
+              "maximum": 2000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "at_tick": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Start tick; omitted for injection = next tick boundary."
+        }
+      },
+      "required": [
+        "type",
+        "x",
+        "z"
+      ],
+      "title": "DisruptionSpec",
+      "type": "object"
+    },
+    "DisruptionTypeSpec": {
+      "additionalProperties": false,
+      "description": "Catalog entry (`data/catalogs/disruptions.v1.yaml`).",
+      "properties": {
+        "id": {
+          "enum": [
+            "traffic",
+            "outage",
+            "gas_leakage",
+            "flood",
+            "storm",
+            "snowstorm",
+            "heavy_rain"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "radius_m": {
+          "maximum": 5000,
+          "minimum": 10,
+          "type": "integer"
+        },
+        "intensity": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "duration_ticks": {
+          "maximum": 2000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "effects": {
+          "$ref": "#/$defs/DisruptionEffects"
+        },
+        "recovery": {
+          "$ref": "#/$defs/Recovery"
+        },
+        "incident": {
+          "$ref": "#/$defs/IncidentTemplate"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "description",
+        "radius_m",
+        "intensity",
+        "duration_ticks",
+        "effects",
+        "recovery",
+        "incident"
+      ],
+      "title": "DisruptionTypeSpec",
+      "type": "object"
+    },
+    "EpochRequest": {
+      "additionalProperties": false,
+      "description": "Body of `reset` and `cancel`; the epoch must match the run's.",
+      "properties": {
+        "run_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_epoch"
+      ],
+      "title": "EpochRequest",
+      "type": "object"
+    },
+    "ErrorResponse": {
+      "additionalProperties": false,
+      "description": "Body of every 4xx answer from the hybrid REST API.",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/Failure"
+        },
+        "failures": {
+          "items": {
+            "$ref": "#/$defs/Failure"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "title": "ErrorResponse",
+      "type": "object"
+    },
+    "Failure": {
+      "additionalProperties": false,
+      "description": "One validation failure or warning.",
+      "properties": {
+        "code": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "entity_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "maxLength": 500,
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "Failure",
+      "type": "object"
+    },
+    "FixedGeometry": {
+      "additionalProperties": false,
+      "description": "Read-only geometry owned by the game, pinned by the SHA-256 of its source file.",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "sha256"
+      ],
+      "title": "FixedGeometry",
+      "type": "object"
+    },
     "HealthResponse": {
       "additionalProperties": false,
       "description": "`GET /api/health`.",
@@ -378,6 +1254,189 @@
       "title": "HealthResponse",
       "type": "object"
     },
+    "IncidentCatalogView": {
+      "additionalProperties": false,
+      "description": "`GET /api/catalogs/incidents`.",
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "kinds": {
+          "items": {
+            "$ref": "#/$defs/IncidentKindSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "version",
+        "sha256",
+        "kinds"
+      ],
+      "title": "IncidentCatalogView",
+      "type": "object"
+    },
+    "IncidentKindSpec": {
+      "additionalProperties": false,
+      "description": "Catalog entry (`data/catalogs/dispatch.v1.yaml`).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "traffic",
+            "outage",
+            "gas_leakage",
+            "flood",
+            "storm",
+            "snowstorm",
+            "heavy_rain",
+            "protest",
+            "crime"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "severity": {
+          "description": "Default severity when spawned.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "needs": {
+          "$ref": "#/$defs/Needs"
+        }
+      },
+      "required": [
+        "kind",
+        "label",
+        "severity",
+        "needs"
+      ],
+      "title": "IncidentKindSpec",
+      "type": "object"
+    },
+    "IncidentObservation": {
+      "additionalProperties": false,
+      "description": "One incident as the game sees it. Report it with `resolved` once before dropping it.",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "traffic",
+            "outage",
+            "gas_leakage",
+            "flood",
+            "storm",
+            "snowstorm",
+            "heavy_rain",
+            "protest",
+            "crime"
+          ],
+          "type": "string"
+        },
+        "severity": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "opened_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "recovering",
+            "resolved"
+          ],
+          "type": "string"
+        },
+        "x": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "z": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "district": {
+          "default": "",
+          "maxLength": 64,
+          "type": "string"
+        },
+        "disruption_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "severity",
+        "opened_tick",
+        "status",
+        "x",
+        "z"
+      ],
+      "title": "IncidentObservation",
+      "type": "object"
+    },
+    "IncidentTemplate": {
+      "additionalProperties": false,
+      "description": "The incident the game spawns for the disruption (id = the record's `incident_id`).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "traffic",
+            "outage",
+            "gas_leakage",
+            "flood",
+            "storm",
+            "snowstorm",
+            "heavy_rain",
+            "protest",
+            "crime"
+          ],
+          "type": "string"
+        },
+        "severity": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "needs": {
+          "$ref": "#/$defs/Needs"
+        }
+      },
+      "required": [
+        "kind",
+        "severity",
+        "needs"
+      ],
+      "title": "IncidentTemplate",
+      "type": "object"
+    },
     "InspectCommand": {
       "additionalProperties": false,
       "description": "Look up one entity; the ack's `result` holds it.",
@@ -401,6 +1460,942 @@
         "entity_id"
       ],
       "title": "InspectCommand",
+      "type": "object"
+    },
+    "LaunchDisruptions": {
+      "additionalProperties": false,
+      "properties": {
+        "automatic": {
+          "default": true,
+          "description": "Seeded automatic disruptions.",
+          "type": "boolean"
+        },
+        "scheduled": {
+          "items": {
+            "$ref": "#/$defs/DisruptionSpec"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "title": "LaunchDisruptions",
+      "type": "object"
+    },
+    "MapBuilding": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "residential",
+            "office",
+            "shop",
+            "social",
+            "park",
+            "parking"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "maxLength": 80,
+          "type": "string"
+        },
+        "x": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "z": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "rotation": {
+          "description": "Radians.",
+          "maximum": 7,
+          "minimum": -7,
+          "type": "number"
+        },
+        "radius": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Footprint radius; null derives it from type."
+        },
+        "area": {
+          "default": false,
+          "description": "A fixed famous district cluster (locked, never removable).",
+          "type": "boolean"
+        },
+        "access": {
+          "$ref": "#/$defs/Access"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "x",
+        "z",
+        "rotation",
+        "access"
+      ],
+      "title": "MapBuilding",
+      "type": "object"
+    },
+    "MapContent": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/MapNode"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "roads": {
+          "items": {
+            "$ref": "#/$defs/MapRoad"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "buildings": {
+          "items": {
+            "$ref": "#/$defs/MapBuilding"
+          },
+          "maxItems": 2000,
+          "type": "array"
+        },
+        "facilities": {
+          "items": {
+            "$ref": "#/$defs/MapFacility"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "landmarks": {
+          "items": {
+            "$ref": "#/$defs/MapLandmark"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "fixed": {
+          "items": {
+            "$ref": "#/$defs/FixedGeometry"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "mayor_office": {
+          "description": "Landmark or facility housing the mayor; an Outage covering it takes the mayor offline.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "nodes",
+        "roads",
+        "buildings",
+        "facilities",
+        "landmarks",
+        "fixed",
+        "mayor_office"
+      ],
+      "title": "MapContent",
+      "type": "object"
+    },
+    "MapCreateRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/maps`: save a new map (revision 1), optionally derived from `parent`.",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MapRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content": {
+          "$ref": "#/$defs/MapContent"
+        },
+        "unlock": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "content"
+      ],
+      "title": "MapCreateRequest",
+      "type": "object"
+    },
+    "MapFacility": {
+      "additionalProperties": false,
+      "description": "A police (PD), fire (FD) or medical facility with its units.",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "type": "string"
+        },
+        "department": {
+          "enum": [
+            "police",
+            "fire",
+            "medical"
+          ],
+          "type": "string"
+        },
+        "x": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "z": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "rotation": {
+          "default": 0.0,
+          "maximum": 7,
+          "minimum": -7,
+          "type": "number"
+        },
+        "radius": {
+          "exclusiveMinimum": 0,
+          "maximum": 500,
+          "type": "number"
+        },
+        "access": {
+          "$ref": "#/$defs/Access"
+        },
+        "landmark": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Set when the facility occupies a landmark site (e.g. MGH)."
+        },
+        "units": {
+          "items": {
+            "$ref": "#/$defs/UnitSpec"
+          },
+          "maxItems": 32,
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "department",
+        "x",
+        "z",
+        "radius",
+        "access"
+      ],
+      "title": "MapFacility",
+      "type": "object"
+    },
+    "MapLandmark": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "canonical",
+            "user"
+          ],
+          "type": "string"
+        },
+        "site": {
+          "anyOf": [
+            {
+              "enum": [
+                "hall",
+                "garden",
+                "hospital",
+                "church",
+                "market",
+                "common",
+                "statehouse"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "x": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "z": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "radius": {
+          "exclusiveMinimum": 0,
+          "maximum": 500,
+          "type": "number"
+        },
+        "locked": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "x",
+        "z",
+        "radius"
+      ],
+      "title": "MapLandmark",
+      "type": "object"
+    },
+    "MapList": {
+      "additionalProperties": false,
+      "properties": {
+        "maps": {
+          "items": {
+            "$ref": "#/$defs/MapSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "maps"
+      ],
+      "title": "MapList",
+      "type": "object"
+    },
+    "MapNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "x": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        },
+        "z": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "x",
+        "z"
+      ],
+      "title": "MapNode",
+      "type": "object"
+    },
+    "MapRef": {
+      "additionalProperties": false,
+      "description": "Pins one exact map revision.",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "sha256"
+      ],
+      "title": "MapRef",
+      "type": "object"
+    },
+    "MapRevision": {
+      "additionalProperties": false,
+      "description": "One immutable saved revision.",
+      "properties": {
+        "format": {
+          "const": "aia-map",
+          "default": "aia-map",
+          "type": "string"
+        },
+        "format_version": {
+          "const": 1,
+          "default": 1,
+          "type": "integer"
+        },
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MapRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "description": "SHA-256 of the canonical JSON of `content`.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "unlocked": {
+          "description": "User landmarks this revision unlocked through an explicit setup action.",
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "content": {
+          "$ref": "#/$defs/MapContent"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "name",
+        "sha256",
+        "content"
+      ],
+      "title": "MapRevision",
+      "type": "object"
+    },
+    "MapRevisionRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/maps/{id}/revisions`: save the next revision; `base` must be the latest.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base": {
+          "$ref": "#/$defs/MapRef"
+        },
+        "content": {
+          "$ref": "#/$defs/MapContent"
+        },
+        "unlock": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "type": "array"
+        }
+      },
+      "required": [
+        "base",
+        "content"
+      ],
+      "title": "MapRevisionRequest",
+      "type": "object"
+    },
+    "MapRevisionSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MapRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "revision",
+        "name",
+        "sha256"
+      ],
+      "title": "MapRevisionSummary",
+      "type": "object"
+    },
+    "MapRoad": {
+      "additionalProperties": false,
+      "description": "A straight road segment between two nodes (the game's `a`/`b` endpoints).",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "maxLength": 80,
+          "type": "string"
+        },
+        "a": {
+          "description": "Start node id.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "b": {
+          "description": "End node id; one-way roads run from `a` to `b`.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "type": {
+          "default": "twoway",
+          "enum": [
+            "twoway",
+            "oneway",
+            "highway"
+          ],
+          "type": "string"
+        },
+        "bridge": {
+          "default": false,
+          "type": "boolean"
+        },
+        "tunnel": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "a",
+        "b"
+      ],
+      "title": "MapRoad",
+      "type": "object"
+    },
+    "MapSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "template",
+            "saved"
+          ],
+          "type": "string"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "revisions": {
+          "items": {
+            "$ref": "#/$defs/MapRevisionSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "read_only",
+        "revisions"
+      ],
+      "title": "MapSummary",
+      "type": "object"
+    },
+    "MapValidateRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/maps/validate`: dry run; with `base` the lock rules are checked too.",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/MapContent"
+        },
+        "base": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MapRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unlock": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "type": "array"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "MapValidateRequest",
+      "type": "object"
+    },
+    "MapValidationReport": {
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "failures": {
+          "items": {
+            "$ref": "#/$defs/Failure"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/Failure"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "sha256"
+      ],
+      "title": "MapValidationReport",
+      "type": "object"
+    },
+    "MayorDecisionRecord": {
+      "additionalProperties": false,
+      "description": "One mayor decision from request to outcome (`decisions.jsonl`).",
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/DecisionEnvelope"
+        },
+        "backend": {
+          "enum": [
+            "baseline",
+            "local",
+            "api"
+          ],
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "controller": {
+          "enum": [
+            "baseline",
+            "local",
+            "api",
+            "hold",
+            "degraded"
+          ],
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/ActionOption"
+          },
+          "type": "array"
+        },
+        "proposal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MayorProposal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "pending",
+            "accepted",
+            "rejected",
+            "hold",
+            "cancelled",
+            "stale"
+          ],
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "satisfaction_before": {
+          "$ref": "#/$defs/SatisfactionPoint"
+        },
+        "satisfaction_after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SatisfactionPoint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Observed `outcome_window_ticks` after the apply tick."
+        },
+        "missed_opportunities": {
+          "default": 0,
+          "description": "Opportunities skipped during the same outage (one hold).",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "envelope",
+        "backend",
+        "model",
+        "controller",
+        "options",
+        "outcome",
+        "satisfaction_before"
+      ],
+      "title": "MayorDecisionRecord",
+      "type": "object"
+    },
+    "MayorProposal": {
+      "additionalProperties": false,
+      "description": "The model's structured answer: one option id plus an optional public statement.",
+      "properties": {
+        "action": {
+          "pattern": "^(A[0-9]{1,3}|HOLD)$",
+          "type": "string"
+        },
+        "statement": {
+          "default": "",
+          "maxLength": 280,
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "MayorProposal",
+      "type": "object"
+    },
+    "MayorStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "enum": [
+            "baseline",
+            "local",
+            "api"
+          ],
+          "type": "string"
+        },
+        "controller": {
+          "enum": [
+            "baseline",
+            "local",
+            "api",
+            "hold",
+            "degraded"
+          ],
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "idle",
+            "deciding",
+            "offline",
+            "removed"
+          ],
+          "type": "string"
+        },
+        "pending_decision_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_opportunity_tick": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "backend",
+        "controller",
+        "state"
+      ],
+      "title": "MayorStatus",
       "type": "object"
     },
     "MetricsMessage": {
@@ -467,6 +2462,274 @@
       "title": "MoverView",
       "type": "object"
     },
+    "Needs": {
+      "additionalProperties": false,
+      "description": "Units required per department.",
+      "properties": {
+        "police": {
+          "default": 0,
+          "maximum": 10,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fire": {
+          "default": 0,
+          "maximum": 10,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "medical": {
+          "default": 0,
+          "maximum": 10,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "Needs",
+      "type": "object"
+    },
+    "OrderAuthority": {
+      "additionalProperties": false,
+      "description": "The political cost of one accepted order (rolling allowance and penalty).",
+      "properties": {
+        "counted": {
+          "description": "False for a repeat of the same order key in the window.",
+          "type": "boolean"
+        },
+        "distinct_key": {
+          "description": "kind:department:incident.",
+          "type": "string"
+        },
+        "window_ticks": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "window_count": {
+          "description": "Distinct accepted orders in the window.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "allowance": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "penalty": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "before": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "after": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "counted",
+        "distinct_key",
+        "window_ticks",
+        "window_count",
+        "allowance",
+        "penalty",
+        "before",
+        "after"
+      ],
+      "title": "OrderAuthority",
+      "type": "object"
+    },
+    "OrderOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "const": "mayor",
+          "default": "mayor",
+          "type": "string"
+        },
+        "backend": {
+          "enum": [
+            "baseline",
+            "local",
+            "api"
+          ],
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "decision_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend",
+        "model",
+        "decision_id"
+      ],
+      "title": "OrderOrigin",
+      "type": "object"
+    },
+    "OrderOutcome": {
+      "additionalProperties": false,
+      "description": "Measured outcome, filled from later game observations.",
+      "properties": {
+        "arrivals": {
+          "items": {
+            "$ref": "#/$defs/Arrival"
+          },
+          "type": "array"
+        },
+        "cleared_tick": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "incident_resolved_tick": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "OrderOutcome",
+      "type": "object"
+    },
+    "OrderRecord": {
+      "additionalProperties": false,
+      "description": "An exceptional department-level order with its origin, units, outcome and cost.",
+      "properties": {
+        "order_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "decision_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/OrderOrigin"
+        },
+        "kind": {
+          "enum": [
+            "dispatch",
+            "prioritize"
+          ],
+          "type": "string"
+        },
+        "department": {
+          "enum": [
+            "police",
+            "fire",
+            "medical"
+          ],
+          "type": "string"
+        },
+        "incident_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "requested_units": {
+          "maximum": 5,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "units": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "rejected"
+          ],
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "applied_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "priority_until_tick": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OrderAuthority"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/OrderOutcome"
+        }
+      },
+      "required": [
+        "order_id",
+        "decision_id",
+        "origin",
+        "kind",
+        "department",
+        "incident_id",
+        "requested_units",
+        "status",
+        "applied_tick"
+      ],
+      "title": "OrderRecord",
+      "type": "object"
+    },
     "PauseCommand": {
       "additionalProperties": false,
       "description": "Pause a running run at the next tick boundary.",
@@ -486,6 +2749,283 @@
         "cmd_id"
       ],
       "title": "PauseCommand",
+      "type": "object"
+    },
+    "PetitionStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "open": {
+          "type": "boolean"
+        },
+        "signers": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "threshold": {
+          "description": "Unique signers needed to call a recall vote.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "opened_tick": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cooldown_until": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "open",
+        "signers",
+        "threshold"
+      ],
+      "title": "PetitionStatus",
+      "type": "object"
+    },
+    "PoliticalStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "petition": {
+          "$ref": "#/$defs/PetitionStatus"
+        },
+        "vote": {
+          "$ref": "#/$defs/VoteStatus"
+        },
+        "protest": {
+          "$ref": "#/$defs/ProtestStatus"
+        },
+        "removal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RemovalRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "authority",
+        "petition",
+        "vote",
+        "protest"
+      ],
+      "title": "PoliticalStatus",
+      "type": "object"
+    },
+    "ProtestStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "participants": {
+          "description": "Unique residents in the protest movement.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "active": {
+          "description": "At least the rule's minimum participants.",
+          "type": "boolean"
+        },
+        "pressure_ticks": {
+          "description": "Consecutive ticks at zero authority.",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "participants",
+        "active",
+        "pressure_ticks"
+      ],
+      "title": "ProtestStatus",
+      "type": "object"
+    },
+    "QueueEntry": {
+      "additionalProperties": false,
+      "description": "Unmet demand of one department at one incident.",
+      "properties": {
+        "incident_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "department": {
+          "enum": [
+            "police",
+            "fire",
+            "medical"
+          ],
+          "type": "string"
+        },
+        "needed": {
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason": {
+          "enum": [
+            "no_qualified_unit",
+            "all_units_busy",
+            "unreachable",
+            "route_not_reported",
+            "out_of_service"
+          ],
+          "type": "string"
+        },
+        "since_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "incident_id",
+        "department",
+        "needed",
+        "reason",
+        "since_tick"
+      ],
+      "title": "QueueEntry",
+      "type": "object"
+    },
+    "Recovery": {
+      "additionalProperties": false,
+      "description": "How the disruption ends and what persists.",
+      "properties": {
+        "mode": {
+          "description": "`on_duration`: ends after duration_ticks. `on_clear`: ends when the responding units clear the incident (or after duration_ticks at the latest). `gradual`: after duration_ticks, speed stays at gradual_speed_multiplier_bp for gradual_ticks.",
+          "enum": [
+            "on_duration",
+            "on_clear",
+            "gradual"
+          ],
+          "type": "string"
+        },
+        "gradual_ticks": {
+          "default": 0,
+          "maximum": 2000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gradual_speed_multiplier_bp": {
+          "default": 10000,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "lasting": {
+          "description": "Consequences that persist after the end.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "Recovery",
+      "type": "object"
+    },
+    "Release": {
+      "additionalProperties": false,
+      "description": "A unit back in service after its incident was cleared or resolved.",
+      "properties": {
+        "unit_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "incident_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "enum": [
+            "cleared",
+            "incident_resolved"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_id",
+        "incident_id",
+        "tick",
+        "reason"
+      ],
+      "title": "Release",
+      "type": "object"
+    },
+    "RemovalRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mechanisms": {
+          "items": {
+            "enum": [
+              "recall_vote",
+              "authority_withdrawn"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "primary": {
+          "enum": [
+            "recall_vote",
+            "authority_withdrawn"
+          ],
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 300,
+          "type": "string"
+        }
+      },
+      "required": [
+        "tick",
+        "mechanisms",
+        "primary",
+        "detail"
+      ],
+      "title": "RemovalRecord",
       "type": "object"
     },
     "RemoveChange": {
@@ -532,6 +3072,264 @@
       "title": "ResetCommand",
       "type": "object"
     },
+    "ResidentAction": {
+      "additionalProperties": false,
+      "description": "A resident decision, delivered in the outcome of its apply tick.",
+      "properties": {
+        "resident_id": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "decision_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "follow_routine",
+            "go_home",
+            "visit_venue",
+            "stay_put",
+            "peaceful_protest",
+            "sign_petition",
+            "vote_retain",
+            "vote_replace",
+            "speeding",
+            "vandalism",
+            "road_blockade"
+          ],
+          "type": "string"
+        },
+        "thought": {
+          "default": "",
+          "maxLength": 140,
+          "type": "string"
+        },
+        "apply_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fallback": {
+          "description": "True when the model failed: routine behaviour.",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "resident_id",
+        "decision_id",
+        "action",
+        "apply_tick",
+        "fallback"
+      ],
+      "title": "ResidentAction",
+      "type": "object"
+    },
+    "ResidentDecisionAccepted": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "string"
+        },
+        "tickets": {
+          "items": {
+            "$ref": "#/$defs/ResidentDecisionTicket"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "run_epoch",
+        "model",
+        "tickets"
+      ],
+      "title": "ResidentDecisionAccepted",
+      "type": "object"
+    },
+    "ResidentDecisionRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/runs/{run_id}/residents`: LLM residents only, at most eight per request.",
+      "properties": {
+        "run_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "tick": {
+          "description": "The last tick the game posted; decisions apply at +2.",
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "residents": {
+          "items": {
+            "$ref": "#/$defs/ResidentObservation"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_epoch",
+        "tick",
+        "residents"
+      ],
+      "title": "ResidentDecisionRequest",
+      "type": "object"
+    },
+    "ResidentDecisionTicket": {
+      "additionalProperties": false,
+      "properties": {
+        "resident_id": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "decision_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "apply_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resident_id",
+        "decision_id",
+        "apply_tick"
+      ],
+      "title": "ResidentDecisionTicket",
+      "type": "object"
+    },
+    "ResidentModes": {
+      "additionalProperties": false,
+      "description": "Seeded LLM assignment: llm_count = (population × ratio_bp + 5000) // 10000.",
+      "properties": {
+        "population": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm_ratio_bp": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm_ids": {
+          "items": {
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "population",
+        "llm_ratio_bp",
+        "llm_count",
+        "llm_ids"
+      ],
+      "title": "ResidentModes",
+      "type": "object"
+    },
+    "ResidentMood": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mood": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "mood"
+      ],
+      "title": "ResidentMood",
+      "type": "object"
+    },
+    "ResidentObservation": {
+      "additionalProperties": false,
+      "description": "What one LLM resident sees (RES-05): own state, local conditions, no hidden events.",
+      "properties": {
+        "id": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "activity": {
+          "maxLength": 32,
+          "type": "string"
+        },
+        "district": {
+          "default": "",
+          "maxLength": 64,
+          "type": "string"
+        },
+        "mood": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        "grievances": {
+          "items": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "maxItems": 6,
+          "type": "array"
+        },
+        "has_venue": {
+          "default": false,
+          "type": "boolean"
+        },
+        "at_home": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "activity",
+        "mood"
+      ],
+      "title": "ResidentObservation",
+      "type": "object"
+    },
     "ResumeCommand": {
       "additionalProperties": false,
       "description": "Resume a paused run.",
@@ -551,6 +3349,46 @@
         "cmd_id"
       ],
       "title": "ResumeCommand",
+      "type": "object"
+    },
+    "RouteObservation": {
+      "additionalProperties": false,
+      "description": "Route availability from a unit's position to an incident on the current game graph.",
+      "properties": {
+        "unit_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "incident_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "reachable": {
+          "type": "boolean"
+        },
+        "travel_ticks": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "unit_id",
+        "incident_id",
+        "reachable"
+      ],
+      "title": "RouteObservation",
       "type": "object"
     },
     "RunConfigOverrides": {
@@ -574,6 +3412,214 @@
         }
       },
       "title": "RunConfigOverrides",
+      "type": "object"
+    },
+    "RunConfigView": {
+      "additionalProperties": false,
+      "properties": {
+        "scenario": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "duration": {
+          "type": "integer"
+        },
+        "start_minute_of_day": {
+          "type": "integer"
+        },
+        "mayor_interval": {
+          "type": "integer"
+        },
+        "mayor_latency_ticks": {
+          "type": "integer"
+        },
+        "resident_latency_ticks": {
+          "type": "integer"
+        },
+        "outcome_window_ticks": {
+          "type": "integer"
+        },
+        "politics_interval_ticks": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "scenario",
+        "seed",
+        "duration",
+        "start_minute_of_day",
+        "mayor_interval",
+        "mayor_latency_ticks",
+        "resident_latency_ticks",
+        "outcome_window_ticks",
+        "politics_interval_ticks"
+      ],
+      "title": "RunConfigView",
+      "type": "object"
+    },
+    "RunHandle": {
+      "additionalProperties": false,
+      "description": "Answer to launch and reset.",
+      "properties": {
+        "contract_version": {
+          "type": "integer"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "completed",
+            "removed",
+            "interrupted"
+          ],
+          "type": "string"
+        },
+        "tick": {
+          "description": "Last processed tick (0 before the first).",
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "map": {
+          "$ref": "#/$defs/MapRef"
+        },
+        "config": {
+          "$ref": "#/$defs/RunConfigView"
+        },
+        "mayor_backend": {
+          "enum": [
+            "baseline",
+            "local",
+            "api"
+          ],
+          "type": "string"
+        },
+        "controller": {
+          "enum": [
+            "baseline",
+            "local",
+            "api",
+            "hold",
+            "degraded"
+          ],
+          "type": "string"
+        },
+        "residents": {
+          "$ref": "#/$defs/ResidentModes"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/$defs/UnitView"
+          },
+          "type": "array"
+        },
+        "catalogs": {
+          "items": {
+            "$ref": "#/$defs/CatalogRef"
+          },
+          "type": "array"
+        },
+        "scheduled_disruptions": {
+          "description": "Launch-scheduled disruptions (automatic ones stay hidden until they start).",
+          "items": {
+            "$ref": "#/$defs/DisruptionRecord"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_version",
+        "run_id",
+        "run_epoch",
+        "status",
+        "tick",
+        "map",
+        "config",
+        "mayor_backend",
+        "controller",
+        "residents",
+        "units",
+        "catalogs"
+      ],
+      "title": "RunHandle",
+      "type": "object"
+    },
+    "RunLaunchRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/runs`: launch a run pinned to one map revision.",
+      "properties": {
+        "map": {
+          "$ref": "#/$defs/MapRef"
+        },
+        "scenario": {
+          "default": "boston",
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "type": "string"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "population": {
+          "description": "Residents 0..population-1.",
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm_ratio_bp": {
+          "description": "LLM share in basis points.",
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mayor_backend": {
+          "default": "local",
+          "enum": [
+            "baseline",
+            "local",
+            "api"
+          ],
+          "type": "string"
+        },
+        "disruptions": {
+          "$ref": "#/$defs/LaunchDisruptions"
+        }
+      },
+      "required": [
+        "map",
+        "population",
+        "llm_ratio_bp"
+      ],
+      "title": "RunLaunchRequest",
       "type": "object"
     },
     "RunState": {
@@ -669,6 +3715,96 @@
         "status"
       ],
       "title": "RunStatusMessage",
+      "type": "object"
+    },
+    "RunSummary": {
+      "additionalProperties": false,
+      "description": "`GET /api/runs/{run_id}` and the answer to `cancel`.",
+      "properties": {
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "completed",
+            "removed",
+            "interrupted"
+          ],
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "map": {
+          "$ref": "#/$defs/MapRef"
+        },
+        "mayor_backend": {
+          "enum": [
+            "baseline",
+            "local",
+            "api"
+          ],
+          "type": "string"
+        },
+        "authority": {
+          "type": "integer"
+        },
+        "removal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RemovalRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decisions": {
+          "type": "integer"
+        },
+        "orders": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "run_epoch",
+        "status",
+        "tick",
+        "map",
+        "mayor_backend",
+        "authority",
+        "decisions",
+        "orders"
+      ],
+      "title": "RunSummary",
+      "type": "object"
+    },
+    "SatisfactionPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "value": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "tick",
+        "value"
+      ],
+      "title": "SatisfactionPoint",
       "type": "object"
     },
     "ServerMessage": {
@@ -913,6 +4049,358 @@
       "title": "TelemetryCommand",
       "type": "object"
     },
+    "TickObservation": {
+      "additionalProperties": false,
+      "description": "`POST /api/runs/{run_id}/ticks`: what the game observed after simulating `tick`.",
+      "properties": {
+        "run_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "satisfaction": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        "incidents": {
+          "items": {
+            "$ref": "#/$defs/IncidentObservation"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "routes": {
+          "description": "Every (available unit, unresolved incident) pair; see docs/contract.md.",
+          "items": {
+            "$ref": "#/$defs/RouteObservation"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "unit_events": {
+          "items": {
+            "$ref": "#/$defs/UnitEvent"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "out_of_service": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "residents_joined": {
+          "items": {
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 10000,
+          "type": "array"
+        },
+        "resident_moods": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ResidentMood"
+              },
+              "maxItems": 100000,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Required on politics ticks."
+        }
+      },
+      "required": [
+        "run_epoch",
+        "tick",
+        "satisfaction"
+      ],
+      "title": "TickObservation",
+      "type": "object"
+    },
+    "TickOutcome": {
+      "additionalProperties": false,
+      "description": "The engine's answer for one tick; effects apply in the game from `effective_tick`.",
+      "properties": {
+        "run_id": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "integer"
+        },
+        "tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "effective_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "completed",
+            "removed",
+            "interrupted"
+          ],
+          "type": "string"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/$defs/UnitView"
+          },
+          "type": "array"
+        },
+        "assignments": {
+          "items": {
+            "$ref": "#/$defs/Assignment"
+          },
+          "type": "array"
+        },
+        "releases": {
+          "items": {
+            "$ref": "#/$defs/Release"
+          },
+          "type": "array"
+        },
+        "queue": {
+          "items": {
+            "$ref": "#/$defs/QueueEntry"
+          },
+          "type": "array"
+        },
+        "orders": {
+          "items": {
+            "$ref": "#/$defs/OrderRecord"
+          },
+          "type": "array"
+        },
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/MayorDecisionRecord"
+          },
+          "type": "array"
+        },
+        "resident_actions": {
+          "items": {
+            "$ref": "#/$defs/ResidentAction"
+          },
+          "type": "array"
+        },
+        "resident_modes": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "Mode of residents who joined this tick (true = LLM).",
+          "type": "object"
+        },
+        "disruptions_started": {
+          "items": {
+            "$ref": "#/$defs/DisruptionRecord"
+          },
+          "type": "array"
+        },
+        "disruptions_ended": {
+          "items": {
+            "$ref": "#/$defs/DisruptionRecord"
+          },
+          "type": "array"
+        },
+        "authority": {
+          "$ref": "#/$defs/AuthorityView"
+        },
+        "politics": {
+          "$ref": "#/$defs/PoliticalStatus"
+        },
+        "mayor": {
+          "$ref": "#/$defs/MayorStatus"
+        },
+        "removal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RemovalRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state_hash": {
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/Failure"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "run_epoch",
+        "tick",
+        "effective_tick",
+        "status",
+        "units",
+        "authority",
+        "politics",
+        "mayor",
+        "state_hash"
+      ],
+      "title": "TickOutcome",
+      "type": "object"
+    },
+    "UnitEvent": {
+      "additionalProperties": false,
+      "description": "A physical outcome: a unit reached its incident, or finished its service there.",
+      "properties": {
+        "unit_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "incident_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "event": {
+          "enum": [
+            "arrived",
+            "cleared"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_id",
+        "incident_id",
+        "event"
+      ],
+      "title": "UnitEvent",
+      "type": "object"
+    },
+    "UnitSpec": {
+      "additionalProperties": false,
+      "description": "A service unit based at a facility; its department is the facility's.",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "kind": {
+          "description": "cruiser, engine, ambulance…",
+          "maxLength": 32,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "title": "UnitSpec",
+      "type": "object"
+    },
+    "UnitView": {
+      "additionalProperties": false,
+      "description": "The engine's view of one unit after the tick.",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "department": {
+          "enum": [
+            "police",
+            "fire",
+            "medical"
+          ],
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "facility_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "available",
+            "assigned",
+            "on_scene",
+            "out_of_service"
+          ],
+          "type": "string"
+        },
+        "incident_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "since_tick": {
+          "maximum": 100000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "department",
+        "kind",
+        "facility_id",
+        "state",
+        "since_tick"
+      ],
+      "title": "UnitView",
+      "type": "object"
+    },
     "UpsertChange": {
       "additionalProperties": false,
       "description": "Insert or replace the whole entity `id` in the keyed map `collection`.",
@@ -939,6 +4427,58 @@
         "value"
       ],
       "title": "UpsertChange",
+      "type": "object"
+    },
+    "VoteStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "open": {
+          "type": "boolean"
+        },
+        "opens_tick": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closes_tick": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eligible": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retain": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "replace": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "open",
+        "eligible",
+        "retain",
+        "replace"
+      ],
+      "title": "VoteStatus",
       "type": "object"
     },
     "WorldView": {

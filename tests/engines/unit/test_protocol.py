@@ -137,5 +137,7 @@ def test_schema_names_every_type_for_typescript_generation() -> None:
             assert "title" not in prop  # no stray per-property type aliases
         if definition.get("type") == "object":
             assert definition.get("additionalProperties") is False
-            if name != "RunConfigOverrides":
+            # WebSocket messages always carry every field. Hybrid REST bodies
+            # (aiautonomy.engines.contract) may have optional inputs with defaults.
+            if name in expected and name != "RunConfigOverrides":
                 assert definition.get("required") == list(definition["properties"])

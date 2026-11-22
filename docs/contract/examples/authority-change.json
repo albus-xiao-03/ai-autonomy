@@ -1,0 +1,55 @@
+{
+  "description": "A third distinct accepted order inside the rolling 120-tick window (orders at ticks 81, 101 and 131) exceeds the allowance of 2, so authority drops by the penalty of 5. The order sends two units but counts once.",
+  "examples": [
+    {
+      "type": "OrderRecord",
+      "value": {
+        "order_id": "ord-000003",
+        "decision_id": "dec-000004",
+        "origin": {
+          "actor": "mayor",
+          "backend": "local",
+          "model": "qwen3:8b",
+          "decision_id": "dec-000004"
+        },
+        "kind": "dispatch",
+        "department": "police",
+        "incident_id": "inc-000004",
+        "requested_units": 2,
+        "units": [
+          "pd-a1-1",
+          "pd-a1-2"
+        ],
+        "status": "accepted",
+        "reason": null,
+        "applied_tick": 131,
+        "priority_until_tick": null,
+        "authority": {
+          "counted": true,
+          "distinct_key": "dispatch:police:inc-000004",
+          "window_ticks": 120,
+          "window_count": 3,
+          "allowance": 2,
+          "penalty": 5,
+          "before": 100,
+          "after": 95
+        },
+        "outcome": {
+          "arrivals": [],
+          "cleared_tick": null,
+          "incident_resolved_tick": null
+        }
+      }
+    },
+    {
+      "type": "AuthorityChange",
+      "value": {
+        "tick": 131,
+        "delta": -5,
+        "value": 95,
+        "reason": "excess_order",
+        "ref": "ord-000003"
+      }
+    }
+  ]
+}

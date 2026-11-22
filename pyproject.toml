@@ -76,6 +76,8 @@ no_implicit_optional = true
 # global-only in mypy, so the strict flag set is spelled out per module.
 [[tool.mypy.overrides]]
 module = [
+    "aiautonomy.engines.contract",
+    "aiautonomy.engines.contract.*",
     "aiautonomy.engines.core",
     "aiautonomy.engines.core.*",
     "aiautonomy.engines.finance",
@@ -126,6 +128,7 @@ forbidden_modules = [
     "aiautonomy.engines.bench",
     "aiautonomy.engines.build",
     "aiautonomy.engines.cli",
+    "aiautonomy.engines.contract",
     "aiautonomy.engines.events",
     "aiautonomy.engines.finance",
     "aiautonomy.engines.host",
@@ -150,5 +153,6 @@ layers = [
     "aiautonomy.engines.record",
     "aiautonomy.engines.sim",
     "aiautonomy.engines.world",
+    "aiautonomy.engines.contract",
     "aiautonomy.engines.core",
 ]

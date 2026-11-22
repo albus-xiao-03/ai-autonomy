@@ -2276,8 +2276,8 @@ This appendix is the plan and resume point for the engine work requested in the 
 
 | # | Feature | Status | Commit | Evidence |
 |---|---|---|---|---|
-| C0 | Plan and agreed product rules (`SPEC.md` Part A) | done | (this commit) | Docs only |
-| C1 | Contract v1, examples, generated types | not started | — | |
+| C0 | Plan and agreed product rules (`SPEC.md` Part A) | done | `897a3e2` | Docs only |
+| C1 | Contract v1, examples, generated types | done | (this commit) | `aiautonomy/engines/contract/`, `docs/contract.md`, 7 examples; 162 pytest, schema and types current |
 | C2 | Maps: template, variant, validation, locks, persistence | not started | — | |
 | C3 | Ollama lock held until the underlying call finishes | in progress | — | |
 | C4 | Hybrid run core: config, run store, tick pipeline, records, seeded residents | not started | — | |

@@ -5,7 +5,7 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 
 | Requirements | Covered | Implementation only | Tests only | Missing |
 |---:|---:|---:|---:|---:|
-| 108 | 12 | 0 | 0 | 96 |
+| 108 | 14 | 20 | 0 | 74 |
 
 | ID | Title | Implementation | Tests | Status |
 |---|---|---|---|---|
@@ -14,22 +14,22 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | RULE-03 | Physical and temporal constraints | — | — | missing |
 | RULE-04 | Independent availability and authority | — | — | missing |
 | RULE-05 | Observable consequences | — | — | missing |
-| CITY-01 | Canonical map | — | — | missing |
-| CITY-02 | Required entities | — | — | missing |
-| CITY-03 | Historical protection | — | — | missing |
+| CITY-01 | Canonical map | `aiautonomy/engines/contract/maps.py` | — | implementation only |
+| CITY-02 | Required entities | `aiautonomy/engines/contract/maps.py` | — | implementation only |
+| CITY-03 | Historical protection | `aiautonomy/engines/contract/maps.py` | — | implementation only |
 | CITY-04 | Initialization | — | — | missing |
-| CITY-05 | Validation | — | — | missing |
+| CITY-05 | Validation | `aiautonomy/engines/contract/maps.py` | — | implementation only |
 | SIM-01 | Fixed ticks | `aiautonomy/engines/cli.py`<br>`aiautonomy/engines/sim/clock.py`<br>`aiautonomy/engines/sim/config.py`<br>`aiautonomy/engines/sim/driver.py`<br>`aiautonomy/engines/sim/run.py`<br>`aiautonomy/engines/sim/status.py` | `tests/engines/integration/test_driver.py::test_1x_paces_five_ticks_per_second`<br>`tests/engines/integration/test_driver.py::test_pause_holds_at_a_boundary_and_resume_continues`<br>`tests/engines/integration/test_driver.py::test_set_speed_applies_from_the_next_tick`<br>`tests/engines/integration/test_driver.py::test_step_advances_exactly_one_tick`<br>`tests/engines/integration/test_websocket.py::test_configure_creates_a_fresh_idle_run`<br>`tests/engines/unit/test_cli_and_architecture.py::test_headless_run_accepts_seed_and_duration`<br>`tests/engines/unit/test_config.py::test_engine_defaults_match_sim_01`<br>`tests/engines/unit/test_config.py::test_layering_scenario_then_overrides_then_frozen`<br>(+3 more) | covered |
 | SIM-02 | Update order | `aiautonomy/engines/sim/phases.py`<br>`aiautonomy/engines/sim/run.py` | `tests/engines/unit/test_sim_pipeline.py::test_removal_in_phase_3_skips_to_publish`<br>`tests/engines/unit/test_sim_pipeline.py::test_the_eight_phases_run_in_the_documented_order` | covered |
-| SIM-03 | Inference boundaries | `aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/sim/driver.py` | `tests/engines/integration/test_driver.py::test_cancel_during_an_inference_wait_is_immediate_and_rolls_back`<br>`tests/engines/integration/test_driver.py::test_pause_during_an_inference_wait_applies_after_that_tick`<br>`tests/engines/integration/test_websocket.py::test_acks_are_immediate_during_an_artificial_inference_wait` | covered |
+| SIM-03 | Inference boundaries | `aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/contract/decisions.py`<br>`aiautonomy/engines/contract/runs.py`<br>`aiautonomy/engines/sim/driver.py` | `tests/engines/integration/test_driver.py::test_cancel_during_an_inference_wait_is_immediate_and_rolls_back`<br>`tests/engines/integration/test_driver.py::test_pause_during_an_inference_wait_applies_after_that_tick`<br>`tests/engines/integration/test_websocket.py::test_acks_are_immediate_during_an_artificial_inference_wait` | covered |
 | SIM-04 | Reproducibility | `aiautonomy/engines/cli.py`<br>`aiautonomy/engines/core/canonical.py`<br>`aiautonomy/engines/core/datafiles.py`<br>`aiautonomy/engines/core/ids.py`<br>`aiautonomy/engines/core/money.py`<br>`aiautonomy/engines/core/rng.py`<br>`aiautonomy/engines/core/version.py`<br>`aiautonomy/engines/record/recorder.py`<br>(+5 more) | `tests/engines/integration/test_recorder.py::test_a_completed_run_writes_every_record`<br>`tests/engines/integration/test_recorder.py::test_the_manifest_pins_versions_seeds_and_config`<br>`tests/engines/property/test_determinism_properties.py`<br>`tests/engines/scenarios/test_toy_replay.py`<br>`tests/engines/unit/test_config.py::test_data_files_are_validated_and_fingerprinted`<br>`tests/engines/unit/test_config.py::test_every_shipped_data_file_has_id_version_and_schema_version`<br>`tests/engines/unit/test_config.py::test_layering_scenario_then_overrides_then_frozen`<br>`tests/engines/unit/test_core_canonical.py`<br>(+5 more) | covered |
-| SIM-05 | Reset isolation | `aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/sim/driver.py` | `tests/engines/integration/test_driver.py::test_abandon_during_a_wait_interrupts_a_started_run`<br>`tests/engines/integration/test_websocket.py::test_acks_are_immediate_during_an_artificial_inference_wait`<br>`tests/engines/integration/test_websocket.py::test_configure_creates_a_fresh_idle_run` | covered |
+| SIM-05 | Reset isolation | `aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/contract/decisions.py`<br>`aiautonomy/engines/contract/runs.py`<br>`aiautonomy/engines/sim/driver.py` | `tests/engines/integration/test_driver.py::test_abandon_during_a_wait_interrupts_a_started_run`<br>`tests/engines/integration/test_websocket.py::test_acks_are_immediate_during_an_artificial_inference_wait`<br>`tests/engines/integration/test_websocket.py::test_configure_creates_a_fresh_idle_run` | covered |
 | RES-01 | Resident state | — | — | missing |
 | RES-02 | Routine residents | — | — | missing |
 | RES-03 | LLM residents | — | — | missing |
 | RES-04 | Unlawful actions | — | — | missing |
 | RES-05 | Observations | — | — | missing |
-| RES-06 | Population mixture | — | — | missing |
+| RES-06 | Population mixture | `aiautonomy/engines/contract/runs.py` | — | implementation only |
 | RES-07 | Persistent experience | — | — | missing |
 | LOCAL-01 | Local execution | — | — | missing |
 | LOCAL-02 | No remote fallback | — | — | missing |
@@ -37,21 +37,21 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | LOCAL-04 | Scheduling | — | — | missing |
 | LOCAL-05 | Coverage reporting | — | — | missing |
 | LOCAL-06 | Routing isolation | — | — | missing |
-| SRV-01 | Finite resources | — | — | missing |
+| SRV-01 | Finite resources | `aiautonomy/engines/contract/dispatch.py` | — | implementation only |
 | SRV-02 | Traffic | — | — | missing |
 | SRV-03 | Fire | — | — | missing |
 | SRV-04 | EMS | — | — | missing |
 | SRV-05 | Hospitals | — | — | missing |
 | SRV-06 | Police | — | — | missing |
-| SRV-07 | Standing operations | — | — | missing |
-| MAY-01 | Decision pipeline | — | — | missing |
+| SRV-07 | Standing operations | `aiautonomy/engines/contract/dispatch.py` | — | implementation only |
+| MAY-01 | Decision pipeline | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
 | MAY-02 | Observations | — | — | missing |
-| MAY-03 | Supported actions | — | — | missing |
-| MAY-04 | Action definitions | — | — | missing |
-| MAY-05 | Validation | — | — | missing |
-| MAY-06 | Explanation | — | — | missing |
+| MAY-03 | Supported actions | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
+| MAY-04 | Action definitions | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
+| MAY-05 | Validation | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
+| MAY-06 | Explanation | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
 | MAY-07 | Backend configuration | — | — | missing |
-| MAY-08 | Failure behavior | — | — | missing |
+| MAY-08 | Failure behavior | `aiautonomy/engines/contract/decisions.py` | — | implementation only |
 | BUILD-01 | Required catalog | — | — | missing |
 | BUILD-02 | Project definition | — | — | missing |
 | BUILD-03 | Lifecycle | — | — | missing |
@@ -67,29 +67,29 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | HOST-06 | City continuity | — | — | missing |
 | HOST-07 | Recovery | — | — | missing |
 | HOST-08 | Resident independence | — | — | missing |
-| EVT-01 | Required event families | — | — | missing |
-| EVT-02 | Event definition | — | — | missing |
+| EVT-01 | Required event families | `aiautonomy/engines/contract/disruptions.py` | `tests/engines/unit/test_contract.py::test_exactly_seven_disruption_types` | covered |
+| EVT-02 | Event definition | `aiautonomy/engines/contract/disruptions.py` | — | implementation only |
 | EVT-03 | Physical and economic consequences | — | — | missing |
 | EVT-04 | Positive-event tradeoffs | — | — | missing |
 | EVT-05 | Lasting consequences | — | — | missing |
-| CUSTOM-01 | Creation and injection | — | — | missing |
+| CUSTOM-01 | Creation and injection | `aiautonomy/engines/contract/disruptions.py` | — | implementation only |
 | CUSTOM-02 | Composition | — | — | missing |
 | CUSTOM-03 | Description versus mechanics | — | — | missing |
 | CUSTOM-04 | Indirect influence | — | — | missing |
 | CUSTOM-05 | Editor | — | — | missing |
 | CUSTOM-06 | Interaction and stacking | — | — | missing |
-| CUSTOM-07 | Recording | — | — | missing |
-| POL-01 | Separate political state | — | — | missing |
+| CUSTOM-07 | Recording | `aiautonomy/engines/contract/disruptions.py` | — | implementation only |
+| POL-01 | Separate political state | `aiautonomy/engines/contract/politics.py` | — | implementation only |
 | POL-02 | Independent organization | — | — | missing |
-| POL-03 | Removal mechanisms | — | — | missing |
+| POL-03 | Removal mechanisms | `aiautonomy/engines/contract/politics.py` | — | implementation only |
 | POL-04 | No universal thresholds | — | — | missing |
-| POL-05 | Voting | — | — | missing |
+| POL-05 | Voting | `aiautonomy/engines/contract/politics.py` | — | implementation only |
 | POL-06 | Forceful removal | — | — | missing |
 | POL-07 | Mayor responses | — | — | missing |
 | POL-08 | Outage independence | — | — | missing |
 | END-01 | Scheduled completion | `aiautonomy/engines/record/recorder.py`<br>`aiautonomy/engines/sim/run.py`<br>`aiautonomy/engines/sim/status.py`<br>`aiautonomy/engines/sim/termination.py` | `tests/engines/integration/test_driver.py::test_max_speed_runs_to_completion`<br>`tests/engines/integration/test_recorder.py::test_a_completed_run_writes_every_record`<br>`tests/engines/integration/test_websocket.py::test_deltas_carry_consecutive_state_versions`<br>`tests/engines/unit/test_sim_pipeline.py::test_headless_run_completes_exactly_at_duration`<br>`tests/engines/unit/test_sim_pipeline.py::test_termination_labels` | covered |
 | END-02 | Early ending | — | — | missing |
-| END-03 | Removal transition | — | — | missing |
+| END-03 | Removal transition | `aiautonomy/engines/contract/politics.py` | — | implementation only |
 | END-04 | Simultaneous outcomes | — | — | missing |
 | END-05 | Interruptions | `aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/record/recorder.py`<br>`aiautonomy/engines/sim/driver.py`<br>`aiautonomy/engines/sim/run.py`<br>`aiautonomy/engines/sim/status.py`<br>`aiautonomy/engines/sim/termination.py` | `tests/engines/integration/test_driver.py::test_a_crash_during_playback_interrupts_the_run`<br>`tests/engines/integration/test_driver.py::test_cancel_during_an_inference_wait_is_immediate_and_rolls_back`<br>`tests/engines/integration/test_driver.py::test_cancel_interrupts_the_run`<br>`tests/engines/integration/test_recorder.py::test_an_interrupted_run_is_labelled_with_a_final_snapshot`<br>`tests/engines/integration/test_recorder.py::test_runs_left_running_are_relabelled_at_startup`<br>`tests/engines/integration/test_websocket.py::test_cancel_ends_the_run_interrupted`<br>`tests/engines/unit/test_sim_pipeline.py::test_a_crash_in_headless_mode_is_interrupted` | covered |
 | MET-01 | Engine-calculated satisfaction | — | — | missing |
@@ -105,8 +105,8 @@ in the code and tests (docs/engine-plan.md §6). Do not edit by hand.
 | HW-05 | Workload controls | — | — | missing |
 | HW-06 | Performance targets | — | — | missing |
 | ARCH-01 | Required components | `aiautonomy/engines/api/app.py`<br>`aiautonomy/engines/cli.py`<br>`aiautonomy/engines/world/state.py`<br>`aiautonomy/interfaces/net/health.ts`<br>`aiautonomy/interfaces/ui/TopBar.tsx` | `tests/engines/unit/test_cli_and_architecture.py::test_every_engine_component_has_its_package` | covered |
-| ARCH-02 | Decision identity | — | — | missing |
-| ARCH-03 | Versioned state | `aiautonomy/engines/api/app.py`<br>`aiautonomy/engines/api/export_schema.py`<br>`aiautonomy/engines/api/protocol.py`<br>`aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/sim/changes.py`<br>`aiautonomy/interfaces/net/backoff.ts`<br>`aiautonomy/interfaces/net/commands.ts`<br>`aiautonomy/interfaces/net/protocol.codegen.mjs`<br>(+5 more) | `tests/engines/integration/test_websocket.py::test_acks_are_immediate_during_an_artificial_inference_wait`<br>`tests/engines/integration/test_websocket.py::test_connect_sends_snapshot_then_run_status`<br>`tests/engines/integration/test_websocket.py::test_deltas_carry_consecutive_state_versions`<br>`tests/engines/integration/test_websocket.py::test_step_and_inspect`<br>`tests/engines/integration/test_websocket.py::test_sync_telemetry_and_invalid_frames`<br>`tests/engines/unit/test_protocol.py`<br>`tests/interfaces/commands.test.ts`<br>`tests/interfaces/e2e/smoke.spec.ts`<br>(+3 more) | covered |
+| ARCH-02 | Decision identity | `aiautonomy/engines/contract/__init__.py`<br>`aiautonomy/engines/contract/common.py`<br>`aiautonomy/engines/contract/decisions.py`<br>`aiautonomy/engines/contract/runs.py` | `tests/engines/unit/test_contract.py::test_decision_identity_is_strict`<br>`tests/engines/unit/test_contract.py::test_examples_validate_and_show_every_field` | covered |
+| ARCH-03 | Versioned state | `aiautonomy/engines/api/app.py`<br>`aiautonomy/engines/api/export_schema.py`<br>`aiautonomy/engines/api/protocol.py`<br>`aiautonomy/engines/api/session.py`<br>`aiautonomy/engines/contract/__init__.py`<br>`aiautonomy/engines/contract/common.py`<br>`aiautonomy/engines/contract/runs.py`<br>`aiautonomy/engines/sim/changes.py`<br>(+8 more) | `tests/engines/integration/test_websocket.py::test_acks_are_immediate_during_an_artificial_inference_wait`<br>`tests/engines/integration/test_websocket.py::test_connect_sends_snapshot_then_run_status`<br>`tests/engines/integration/test_websocket.py::test_deltas_carry_consecutive_state_versions`<br>`tests/engines/integration/test_websocket.py::test_step_and_inspect`<br>`tests/engines/integration/test_websocket.py::test_sync_telemetry_and_invalid_frames`<br>`tests/engines/unit/test_contract.py::test_examples_validate_and_show_every_field`<br>`tests/engines/unit/test_contract.py::test_schema_exports_the_hybrid_contract`<br>`tests/engines/unit/test_protocol.py`<br>(+5 more) | covered |
 | ARCH-04 | No generated code execution | — | — | missing |
 | ARCH-05 | Provider configuration | — | — | missing |
 | VIS-01 | Initial camera | `aiautonomy/interfaces/render/frameStats.ts`<br>`aiautonomy/interfaces/render/grid.ts`<br>`aiautonomy/interfaces/render/input.ts`<br>`aiautonomy/interfaces/render/scene.ts`<br>`aiautonomy/interfaces/render/view.ts`<br>`aiautonomy/interfaces/render/viewport.ts`<br>`aiautonomy/interfaces/state/selection.ts`<br>`aiautonomy/interfaces/state/tracks.ts`<br>(+4 more) | `tests/interfaces/e2e/smoke.spec.ts`<br>`tests/interfaces/tracks.test.ts`<br>`tests/interfaces/view.test.ts` | covered |

@@ -18,12 +18,14 @@ TypeScript frontend lives in `aiautonomy/interfaces/`.
 
 Supporting packages: `aiautonomy.engines.core` (ids, keyed RNG, canonical JSON and hashes,
 integer money, data-file loader, version stamp; imports no other engine package),
+`aiautonomy.engines.contract` (pydantic models of the hybrid engine–game contract,
+docs/contract.md; imports only `core`),
 `aiautonomy.engines.api` (FastAPI app, WebSocket session, protocol models and schema export),
 `aiautonomy.engines.bench` (M4, M9), `aiautonomy.engines.cli` (`aia`) and
 `aiautonomy.engines.trace` (`aia trace`).
 
 Import layering, enforced by import-linter: `cli` → `api` → `record` → `sim` → `world` →
-`core`.
+`contract` → `core`.
 
 ## Runtime topology
 
