@@ -310,6 +310,17 @@ Engine status copied from the teammate checkpoint (2026-11-22). The browser game
 | M8 Custom events | not started | — | |
 | M9 Release verification | not started | — | Steps 7–11 need the target Mac (D1) |
 
+#### Hybrid engine features (engine brief of 2026-11-22; plan and live checkpoint in `docs/engine-plan.md` Appendix B)
+
+The M1–M9 rows above describe the long-term engine-owns-everything plan. Hybrid work is tracked here.
+
+| Feature | Status | Commit | Evidence / limits |
+|---|---|---|---|
+| C0 Agreed rules (Part A) and plan | done (verified) | `897a3e2` | Docs only; `aia trace` parses 108 requirements |
+| C1 Contract v1 and examples | done (verified) | `1e8dd65` | `aiautonomy/engines/contract/`, `docs/contract.md`, 7 examples validated and round-tripped; schema and TS types current |
+| C2 Maps: template, variant, validation, locks, persistence | done (verified) | `3231ac4` | 39 map tests and 3 REST tests; `node tests/boston-maps.cjs` runs the game's validators: catalog matches, every road, driveway and route accepted, shortcut removal 853→1413 m. The game does not load engine maps yet (interface agent) |
+| C3 Ollama lock held until the underlying call finishes | done (verified) | (this commit) | 8 new tests (reset or timeout mid-chat or mid-unload, cancelled waiter, two event loops, keep_alive 5m); they fail on the previous code. Fakes only, no live Ollama check |
+
 ## 13. Known limits (keep honest)
 
 - Traffic physics and collisions are simplified for arcade feel.
