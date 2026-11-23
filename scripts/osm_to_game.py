@@ -14,7 +14,7 @@ UNIQUE_BUILDING = {"church", "cathedral", "chapel", "synagogue", "government", "
 RES = {"apartments", "house", "residential", "semidetached_house", "terrace", "dormitory", "detached"}
 OFFICE = {"office", "commercial", "hotel", "university", "college", "school", "industrial"}
 SHOP = {"retail", "kiosk", "supermarket"}
-SKIP = {"roof", "shed", "service", "garage", "garages", "boathouse", "construction", "bridge", "ruins"}
+SKIP = {"no", "roof", "shed", "service", "garage", "garages", "boathouse", "construction", "bridge", "ruins"}  # "no": e.g. North Station platforms matched by the query
 
 def xy(lon, lat):
     return ((lon - LON0) * MX, (LAT0 - lat) * MZ)

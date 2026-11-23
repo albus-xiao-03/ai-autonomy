@@ -26,7 +26,9 @@
     Object.assign(sun.shadow.camera,{left:-2200,right:2200,top:2000,bottom:-2000,far:10000});
     sun.shadow.mapSize.set(2048,2048);sun.shadow.normalBias=1.5;sun.shadow.bias=-.00015;
     scene.add(sun);
-    const geometries={box:new T.BoxGeometry(1,1,1), round:new T.CylinderGeometry(1,1,1,12), roof:new T.ConeGeometry(1,1,4), pine:new T.ConeGeometry(1,1,7), crown:new T.IcosahedronGeometry(1,0), dome:new T.SphereGeometry(1,10,4,0,Math.PI*2,0,Math.PI/2)};
+    const geometries={box:new T.BoxGeometry(1,1,1), round:new T.CylinderGeometry(1,1,1,12), roof:new T.ConeGeometry(1,1,4), pine:new T.ConeGeometry(1,1,7), crown:new T.IcosahedronGeometry(1,0), dome:new T.SphereGeometry(1,10,4,0,Math.PI*2,0,Math.PI/2),
+      // Square pyramid aligned with its box (corners at ±0.707): scales cleanly to long footprints as a hip roof.
+      pyramid:new T.ConeGeometry(1,1,4).rotateY(Math.PI/4)};
     const material=new T.MeshStandardMaterial({roughness:1,flatShading:true});
     let pending=[],origin=null,yaw=0,modelScale=1,latestIncidents=[],damageById={},lastDamageKey='';
     function part(shape,x,y,z,w,h,d,color,yaw=0) {
@@ -169,7 +171,7 @@
           for(let f=0;f<Math.min(floors,4);f++)P('detail','box',0,G+.3+f*3.3,D/2+1.1,W*.9,.25,2.2,0xf2efe6);
           for(const sx of [-.42,.42])P('detail','box',W*sx,G+porch/2,D/2+2.1,.3,porch,.3,0xf2efe6);bands(0x34414a);
         }else{ // Beacon Hill federal brick with slate roof, dormer and black shutters
-          body(0x8a3a2c);P('mass','roof',0,top+1.6,0,W*.72,3.2,D*.72,0x4b4f55,Math.PI/4);P('detail','box',0,top+1.4,D*.22,W*.25,1.6,1.2,0x4b4f55);
+          body(0x8a3a2c);P('mass','pyramid',0,top+1.6,0,W*.72,3.2,D*.72,0x4b4f55);P('detail','box',0,top+1.4,D*.22,W*.25,1.6,1.2,0x4b4f55);
           for(const sx of [-.32,-.12,.12,.32])P('detail','box',W*sx,G+H*.5,D/2+.1,.45,H*.75,.12,0x1d1f22);bands(0xe8e2d0);
         }
       }else if(b.k==='office'){
