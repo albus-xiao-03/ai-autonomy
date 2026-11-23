@@ -246,8 +246,8 @@
     // zoomed in). Bridges, tunnels, edited streets and player roads still go through drawRoads().
     const streetIds=new Set();let streetGone=new Set();
     function buildStreets(){
-      for(const r of CityPlan.plan.roads){
-        if(!r.real||r.bridge||r.tunnel)continue;
+      for(const r of CityPlan.realStreetRoads){
+        if(r.bridge||r.tunnel)continue;
         const length=CityPlan.dist(r.a,r.b),w=CityPlan.roadWidth(r),seg={x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,r:Math.atan2(r.b.z-r.a.z,r.b.x-r.a.x),id:r.pathId},t=cityTile(seg);
         streetIds.add(r.pathId);
         cpart(t,'mass',seg,'box',0,.38,0,length+.6,.12,w+2.4,0xb7b5a5);cpart(t,'mass',seg,'box',0,.52,0,length+.6,.12,w,0x59666a);
@@ -338,7 +338,7 @@
       return mesh;
     }
     function markingBlocked(road,p){
-      return CityPlan.plan.roads.some(other=>other!==road&&!(road.pathId&&other.pathId===road.pathId)&&Math.abs(CityPlan.heightAt(p,road)-CityPlan.heightAt(p,other))<.75&&CityPlan.dist(p,CityPlan.projection(p,other.a,other.b))<CityPlan.roadWidth(other)/2+.65);
+      return CityPlan.roadsNear(p,1).some(other=>other!==road&&!(road.pathId&&other.pathId===road.pathId)&&Math.abs(CityPlan.heightAt(p,road)-CityPlan.heightAt(p,other))<.75&&CityPlan.dist(p,CityPlan.projection(p,other.a,other.b))<CityPlan.roadWidth(other)/2+.65);
     }
     // Junction controls: poles, housings and signs are rebuilt only when the controls change; the
     // signal lamps are one instanced mesh whose colours follow a real-time 40-second cycle (the
@@ -454,7 +454,7 @@
       }
       for(const building of [...CityPlan.plan.buildings.filter(b=>!b.anchor),...(CityPlan.layout==='arcade'?CityPlan.landmarks.filter(l=>['hall','hospital'].includes(l.site)):[])]){
         const connection=CityPlan.access(building),s=building.scale||CityPlan.buildingScale(building.type),angle=building.rotation||0;
-        const entrance={x:building.x+Math.sin(angle)*(building.radius||s*2.5),z:building.z+Math.cos(angle)*(building.radius||s*2.5)};
+        const reach=building.entranceDistance??(building.radius||s*2.5),entrance={x:building.x+Math.sin(angle)*reach,z:building.z+Math.cos(angle)*reach};
         box(entrance.x,1.1,entrance.z,8,.5,8,(connection||building.site)?0xf5d176:0xe98649,angle);
         if(connection){
           const p=connection.p,length=connection.length,rotation=-Math.atan2(p.z-entrance.z,p.x-entrance.x);
@@ -560,7 +560,9 @@
       const active=(state.incidents||[]).filter(i=>!['resolved','averted'].includes(i.status));
       const labelKey=active.map(i=>i.id+i.status+i.response).join('|');
       if(labelKey!==incidentLabelKey){latestIncidents=active;incidentLabelKey=labelKey;refreshLabels();}
-      const key=CityPlan.revision+'|'+Math.floor((state.minute||0)*3)+'|'+labelKey;
+      // Only animated incidents (storm rain, fire) need redrawing as time passes.
+      const animated=active.some(i=>(i.kind==='storm'&&i.status==='active')||i.kind==='fire');
+      const key=CityPlan.revision+'|'+(animated?Math.floor((state.minute||0)*3):'')+'|'+labelKey;
       if(key===incidentEffectKey)return;
       incidentEffectKey=key;disposeGroup(incidentGroup);shadowsDirty=true;
       const water=[];
@@ -617,6 +619,7 @@
       incidentGroup=flush();for(const mesh of water)incidentGroup.add(mesh);
     }
     function update(lotMap={},agents=[],state={}) {
+      lastUpdateAt=performance.now();
       renderer.domElement.style.cursor=getTool().pan?'grab':'crosshair';
       const damageKey=JSON.stringify(state.damage||{});damageById=state.damage||{};
       if(lastRevision!==CityPlan.revision||damageKey!==lastDamageKey){
@@ -730,7 +733,7 @@
     // turns at intersections, more cars at rush hour (about one car per 18 residents). Visual only:
     // the simulated commuters drive the score. Updated and drawn only when zoomed in.
     const TRAFFIC_MAX=1600,TRAFFIC_RESIDENTS_PER_CAR=18,TRAFFIC_MIN_ZOOM=1.6,CAR_SPACE=5.6,trafficCars=[],trafficColors=[0xd87451,0xe7c16d,0x729eaa,0xb7c9ad,0xe8e4d8,0x3f4a52,0x9b3b34];
-    let trafficGraph=null,trafficRevision=-1,trafficSeed=7,trafficMinute=480,trafficPaused=false,trafficDirty=true,trafficShown=0,lastRender=0,trafficClock=0;
+    let lastUpdateAt=0,trafficGraph=null,trafficRevision=-1,trafficSeed=7,trafficMinute=480,trafficPaused=false,trafficDirty=true,trafficShown=0,lastRender=0,trafficClock=0;
     let trafficIncidents=[],trafficIncidentKey='',trafficBlocks=new Map(),trafficBlocksFor='';
     const trafficRerouteChoices={total:0,avoided:0},trafficStats={entered:0,exited:0,visibleSpawns:0,visibleRemovals:0,edgeExits:0,edgeEntries:0};
     // Area on screen (set from the camera); cars are only added or removed outside it or underground,
@@ -866,7 +869,7 @@
       const elapsed=Math.min(.1,(now-cameraFrame)/1000);cameraFrame=now;
       // Traffic moves in real time; render here only if update() has not just rendered this frame.
       const lampsChanged=updateSignalLamps();
-      if((trafficTick(elapsed)||lampsChanged)&&now-lastRender>12)render();
+      if((trafficTick(elapsed)||lampsChanged)&&performance.now()-lastUpdateAt>40)render();
       if(pressed.size){
         const rate=450*elapsed/scale,dx=(Number(pressed.has('d'))-Number(pressed.has('a')))*rate,dz=(Number(pressed.has('s'))-Number(pressed.has('w')))*rate;
         pan.x+=dx*Math.cos(azimuth)+dz*Math.sin(azimuth);pan.z+=-dx*Math.sin(azimuth)+dz*Math.cos(azimuth);

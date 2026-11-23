@@ -87,6 +87,8 @@ window.CitySim = (() => {
   }
 
   function start(lots, config = {}) {
+    // City Hall's real neighbourhood (the old 'Downtown' district no longer exists).
+    const hallDistrict=window.CityPlan?.district?CityPlan.district(window.CITY_HALL||{x:0,z:0}):'Government Center';
     // Hybrid brain: the Python engine (aia serve, port 8787) decides for the mayor and
     // autonomous residents. The game owns the physical city and falls back if it is offline.
     const ENGINE=config.engine||'http://127.0.0.1:8787';
@@ -139,7 +141,7 @@ window.CitySim = (() => {
       return event;
     };
     record('The city is waking up. I’ll watch the morning commute from City Hall.',
-      'Opened City Hall', 'Applied', 'Morning service is active.', 'Downtown');
+      'Opened City Hall', 'Applied', 'Morning service is active.', hallDistrict);
 
     const incidentSystem=CityIncidents.create({
       minute:()=>minute,sites:()=>sites,districts:()=>districts,protected:()=>hallProtected,
@@ -447,11 +449,11 @@ window.CitySim = (() => {
       }
       strain = districts.filter(d => d.authority < 60).length > districts.length / 2 ? strain+1 : 0;
       if (hallProtected && strain === 1) record('Service is breaking down across Boston. City Hall’s protected radius is under pressure.',
-        'City Hall warning','Reported','Protection will fail after an hour of sustained citywide disruption.','Downtown');
+        'City Hall warning','Reported','Protection will fail after an hour of sustained citywide disruption.',hallDistrict);
       if (hallProtected && strain >= 60) {
         hallProtected=false;
         record('The disruption has reached City Hall. The protected zone can no longer hold.',
-          'Protection lost','Reported','City Hall now shares the surrounding district’s risk.','Downtown');
+          'Protection lost','Reported','City Hall now shares the surrounding district’s risk.',hallDistrict);
       }
       if (minute >= CLOSE) {
         ended=true;

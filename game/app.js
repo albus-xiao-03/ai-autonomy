@@ -8,40 +8,72 @@
   const time=value=>String(Math.floor(value/60)).padStart(2,'0')+':'+String(Math.floor(value%60)).padStart(2,'0');
   const left=type=>stock[type]-CityPlan.plan.buildings.filter(b=>!b.area&&b.type===type).length;
   const notice=message=>{$('notice').textContent=message;};
-  let legacySave=null;
-  // Adds saved player roads, buildings and junction controls that still fit the current map.
+  let legacySave=null,legacyImported=false,importUndoDepth=-1;
+  // Saved items that do not fit the current map (another layout, a restored street or building on top
+  // of them) are kept aside in the save and retried on every load instead of being deleted.
+  let dormant={roads:[],buildings:[],controls:[]};
+  const SAVE_KEY=CityPlan.layout==='arcade'?'borough-boston-v1-arcade':'borough-boston-v1';
+  const anchorIds=()=>new Set(CityPlan.plan.buildings.filter(b=>b.anchor).map(b=>b.cityId));
+  // Adds saved player roads, buildings and junction controls that fit the current map.
   function loadPlayerPlan(saved){
-    if(saved?.roads)for(const r of saved.roads)if(!r.fixed&&!r.real&&CityPlan.widths[r.type]&&r.a&&r.b&&!CityPlan.roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId))CityPlan.plan.roads.push(r);
-    if(saved?.buildings)for(const b of saved.buildings){
-      const valid=Object.hasOwn(stock,b.type)&&Number.isFinite(b.x)&&Number.isFinite(b.z)&&Number.isFinite(b.rotation)&&b.id!=null&&!CityPlan.plan.buildings.some(existing=>existing.id===b.id);
-      if(valid&&left(b.type)>0&&!CityPlan.buildingError(b))CityPlan.plan.buildings.push({...b,area:false});
+    const kept={roads:[],buildings:[],controls:[]};
+    for(const r of [...(saved?.roads||[]),...(saved?.dormant?.roads||[])]){
+      if(r.fixed||r.real||!CityPlan.widths[r.type]||!r.a||!r.b)continue;
+      if(CityPlan.plan.roads.some(o=>o.id===r.id))continue;
+      if(CityPlan.roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId))kept.roads.push(r);else CityPlan.plan.roads.push(r);
     }
-    if(saved?.controls)for(const c of saved.controls)if(CityPlan.controlTypes[c.kind]&&!CityPlan.plan.controls.some(o=>o.kind===c.kind&&CityPlan.dist(o,c)<.1&&(!c.approach||o.approach&&o.approach.x*c.approach.x+o.approach.z*c.approach.z>.95))&&CityPlan.junctions().some(j=>CityPlan.dist(c,j)<.1)&&(!c.approach||(Number.isFinite(c.approach.x)&&Number.isFinite(c.approach.z))))CityPlan.plan.controls.push(c);
+    CityPlan.changed();
+    for(const b of [...(saved?.buildings||[]),...(saved?.dormant?.buildings||[])]){
+      const valid=Object.hasOwn(stock,b.type)&&Number.isFinite(b.x)&&Number.isFinite(b.z)&&Number.isFinite(b.rotation)&&b.id!=null&&!CityPlan.plan.buildings.some(existing=>existing.id===b.id);
+      if(!valid)continue;
+      if(left(b.type)>0&&!CityPlan.buildingError(b))CityPlan.plan.buildings.push({...b,area:false});else kept.buildings.push(b);
+    }
+    CityPlan.changed();
+    for(const c of [...(saved?.controls||[]),...(saved?.dormant?.controls||[])]){
+      if(!CityPlan.controlTypes[c.kind]||(c.approach&&!(Number.isFinite(c.approach.x)&&Number.isFinite(c.approach.z))))continue;
+      if(CityPlan.plan.controls.some(o=>o.kind===c.kind&&CityPlan.dist(o,c)<.1&&(!c.approach||o.approach&&o.approach.x*c.approach.x+o.approach.z*c.approach.z>.95)))continue;
+      if(CityPlan.junctions().some(j=>CityPlan.dist(c,j)<.1))CityPlan.plan.controls.push(c);else if(!c.real)kept.controls.push(c);
+    }
+    return kept;
   }
-  // Opt-in import of a level-era save: clears unlocked Boston buildings under its roads and buildings.
+  // Opt-in import of a level-era save. Each old road or building is tried on its own: the unlocked Boston
+  // buildings under it are bulldozed only if it then fits; otherwise it is skipped and nothing is cleared.
   function importLegacy(legacy){
-    const clear=(p,r)=>CityPlan.cityNear(p,r).filter(b=>!b.locked&&CityPlan.inCityRect(b,p,r)).forEach(b=>CityPlan.plan.removedCity.push(b.id));
-    for(const r of legacy.roads||[])if(!r.fixed&&!r.tunnel&&r.a&&r.b){const n=Math.ceil(CityPlan.dist(r.a,r.b)/4);for(let i=0;i<=n;i++)clear({x:r.a.x+(r.b.x-r.a.x)*i/n,z:r.a.z+(r.b.z-r.a.z)*i/n},(CityPlan.widths[r.type]||8)/2);}
-    for(const b of legacy.buildings||[])if(Number.isFinite(b.x)&&Number.isFinite(b.z))clear(b,CityPlan.buildingScale(b.type)*4.2*.7);
-    CityPlan.plan.removedCity=[...new Set(CityPlan.plan.removedCity)];
-    loadPlayerPlan(legacy);CityPlan.subdividePlayerRoads();CityPlan.changed();CityPlan.pruneControls();
+    const anchors=anchorIds();let placed=0,skipped=0;
+    const under=(p,r,ids)=>CityPlan.cityNear(p,r).forEach(b=>{if(!b.locked&&!anchors.has(b.id)&&CityPlan.inCityRect(b,p,r))ids.add(b.id);});
+    const tryClear=(ids,fits)=>{const before=CityPlan.plan.removedCity;CityPlan.plan.removedCity=[...new Set([...before,...ids])];CityPlan.changed();if(fits())return true;CityPlan.plan.removedCity=before;CityPlan.changed();return false;};
+    for(const r of legacy.roads||[]){
+      if(r.fixed||!CityPlan.widths[r.type]||!r.a||!r.b)continue;
+      const ids=new Set();if(!r.tunnel){const n=Math.ceil(CityPlan.dist(r.a,r.b)/4);for(let i=0;i<=n;i++)under({x:r.a.x+(r.b.x-r.a.x)*i/n,z:r.a.z+(r.b.z-r.a.z)*i/n},(CityPlan.widths[r.type]||8)/2,ids);}
+      if(tryClear(ids,()=>!CityPlan.roadError(r.a,r.b,r.type,!!r.bridge,!!r.tunnel,.01,!r.pathId))){CityPlan.plan.roads.push(r);CityPlan.changed();placed++;}else skipped++;
+    }
+    for(const b of legacy.buildings||[]){
+      if(!Object.hasOwn(stock,b.type)||!Number.isFinite(b.x)||!Number.isFinite(b.z)||!Number.isFinite(b.rotation)||b.id==null||CityPlan.plan.buildings.some(o=>o.id===b.id))continue;
+      const ids=new Set();under(b,CityPlan.buildingScale(b.type)*4.2*.7,ids);
+      if(left(b.type)>0&&tryClear(ids,()=>!CityPlan.buildingError(b))){CityPlan.plan.buildings.push({...b,area:false});CityPlan.changed();placed++;}else skipped++;
+    }
+    loadPlayerPlan({controls:legacy.controls||[]});CityPlan.subdividePlayerRoads();CityPlan.changed();CityPlan.pruneControls();
+    return {placed,skipped};
   }
   try{
     // Current saves use borough-boston-v1. An older level-based save (borough-levels-v1) is NOT loaded
     // automatically: its roads were drawn on the old arcade map and would cut through real Boston.
     // The City tab offers "Import old level save" instead.
-    const current=JSON.parse(localStorage.getItem('borough-boston-v1')||'null');
-    legacySave=current?null:JSON.parse(localStorage.getItem('borough-levels-v1')||'null');
+    const current=JSON.parse(localStorage.getItem(SAVE_KEY)||'null')||(SAVE_KEY!=='borough-boston-v1'?JSON.parse(localStorage.getItem('borough-boston-v1')||'null'):null);
+    legacyImported=!!current?.legacyImported;
+    legacySave=legacyImported?null:JSON.parse(localStorage.getItem('borough-levels-v1')||'null');
     CityPlan.seedArcade();
     if(current?.version>=2){if(current.streets===false)CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>!r.real);else CityPlan.setRealStreets(current.removedStreets||[],current.modifiedStreets||[]);}
-    if(Array.isArray(current?.removedCity)){const removable=new Set(CityPlan.city.filter(b=>!b.locked).map(b=>b.id));CityPlan.plan.removedCity=current.removedCity.filter(id=>removable.has(id));}
+    if(Array.isArray(current?.removedCity)){const removable=new Set(CityPlan.city.filter(b=>!b.locked).map(b=>b.id));const anchors=anchorIds();CityPlan.plan.removedCity=current.removedCity.filter(id=>removable.has(id)&&!anchors.has(id));}
     // Version 3 saves store every junction control, including real signals the player kept or removed.
     if(current?.version>=3)CityPlan.plan.controls=[];
-    loadPlayerPlan(current);
+    dormant=loadPlayerPlan(current);
+    const aside=dormant.roads.length+dormant.buildings.length;
+    if(aside)setTimeout(()=>notice(aside+' saved road or building piece'+(aside===1?' does':'s do')+' not fit this map right now; '+(aside===1?'it is':'they are')+' kept in your save and will return when there is room.'),0);
     settings=localStorage.getItem('borough-mayor')||'local';if(settings==='qwen')settings='local';else if(!['local','baseline','api'].includes(settings))settings='baseline';$('mayorBrain').value=settings;$('autonomy').value=localStorage.getItem('borough-autonomy')??'30';$('autoIncidents').checked=localStorage.getItem('borough-auto-incidents')!=='false';
   }catch{CityPlan.seedArcade();}
   CityPlan.subdividePlayerRoads();CityPlan.changed();CityPlan.pruneControls();
-  function save(){try{const snap=JSON.parse(CityPlan.snapshot());localStorage.setItem('borough-boston-v1',JSON.stringify({version:3,roads:snap.roads.filter(r=>!r.fixed),controls:snap.controls,buildings:snap.buildings.filter(b=>!b.area),removedCity:snap.removedCity,streets:snap.streets,removedStreets:snap.removedStreets,modifiedStreets:snap.modifiedStreets}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
+  function save(){try{const snap=JSON.parse(CityPlan.snapshot());localStorage.setItem(SAVE_KEY,JSON.stringify({version:3,dormant,legacyImported,roads:snap.roads.filter(r=>!r.fixed),controls:snap.controls,buildings:snap.buildings.filter(b=>!b.area),removedCity:snap.removedCity,streets:snap.streets,removedStreets:snap.removedStreets,modifiedStreets:snap.modifiedStreets}));}catch{notice('Browser storage is unavailable. Keep this page open to preserve your plan.');}}
   const world=CityWorld.mount($('world'),{
     onPoint:place,
     getTool:()=>({pan:!selection,dragRoad:!!CityPlan.widths[selection]&&$('roadMode').value==='drag'&&$('roadShape').value==='straight'&&$('roadAction').value==='build'}),
@@ -111,7 +143,7 @@
       button.disabled=!sim||sim.getState().finished;button.setAttribute('aria-pressed',selection==='incident:'+button.dataset.event);
     }
     $('pan').setAttribute('aria-pressed',!selection);
-    $('clearRoads').disabled=!CityPlan.plan.roads.some(r=>!r.fixed);
+    $('clearRoads').disabled=!CityPlan.plan.roads.some(r=>!r.fixed&&!r.real);
     $('remove').classList.toggle('active',selection==='remove');$('remove').disabled=false;$('undo').disabled=!undo.length;
     $('rotate').textContent='Rotate · '+Math.round(rotation*180/Math.PI)+'°';
   }
@@ -169,26 +201,37 @@
   }
   $('autoIncidents').onchange=()=>{sim?.setAutoIncidents($('autoIncidents').checked);try{localStorage.setItem('borough-auto-incidents',$('autoIncidents').checked);}catch{}};
   document.querySelectorAll('[data-control]').forEach(button=>button.onclick=()=>choose(button.dataset.control));
-  $('undo').onclick=()=>{const snapshot=undo.pop();if(!snapshot)return;CityPlan.restore(snapshot);roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Last edit undone.');};
+  $('undo').onclick=()=>{const depth=undo.length,snapshot=undo.pop();if(!snapshot)return;CityPlan.restore(snapshot);if(depth===importUndoDepth){legacyImported=false;importUndoDepth=-1;legacySave=JSON.parse(localStorage.getItem('borough-levels-v1')||'null');$('importLegacy').hidden=!legacySave;}roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Last edit undone.');};
   $('clearRoads').onclick=()=>{
-    undo.push(CityPlan.snapshot());CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed||r.real);CityPlan.plan.controls=CityPlan.plan.controls.filter(c=>c.real);CityPlan.changed();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Player roads cleared. Real Boston streets stay. Undo restores them.');
+    undo.push(CityPlan.snapshot());CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed||r.real);CityPlan.changed();CityPlan.pruneControls();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Player roads cleared. Real Boston streets stay. Undo restores them.');
   };
   // Back to real Boston: removes player roads and junction controls and restores every real street.
   $('realStreets').onclick=()=>{
     if(!topDownOnly())return;
-    undo.push(CityPlan.snapshot());CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed);CityPlan.plan.controls=[];CityPlan.setRealStreets();const signals=CityPlan.setRealSignals();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Real Boston streets restored ('+CityPlan.realStreetCount+' street pieces, '+signals+' real traffic signals and stop signs). Your own roads were removed. Undo brings them back.');
+    undo.push(CityPlan.snapshot());CityPlan.plan.roads=CityPlan.plan.roads.filter(r=>r.fixed);CityPlan.plan.controls=[];CityPlan.setRealStreets();
+    // A real street that would run through one of your buildings stays removed so the building keeps fitting.
+    const players=CityPlan.plan.buildings.filter(b=>!b.area),blocked=new Set(CityPlan.plan.roads.filter(r=>r.real&&players.some(b=>{const q=CityPlan.projection(b,r.a,r.b);return Math.abs(CityPlan.heightAt(q,r))<3&&CityPlan.dist(b,q)<CityPlan.roadWidth(r)/2+CityPlan.buildingScale(b.type)*4.2;})).map(r=>r.pathId));
+    if(blocked.size)CityPlan.setRealStreets([...blocked]);
+    const signals=CityPlan.setRealSignals();roadStart=curveControl=null;world.ghost(null);networkEdited();notice('Real Boston streets restored ('+CityPlan.realStreetCount+' street pieces, '+signals+' real traffic signals and stop signs). Your own roads were removed. Undo brings them back.');
   };
   // Map layout switch (needs a reload because the land shapes are chosen before the planner loads).
   $('mapLayout').value=CityPlan.layout;
   $('mapLayout').onchange=()=>{save();try{localStorage.setItem('borough-layout',$('mapLayout').value);}catch{}location.reload();};
   $('restoreBuildings').onclick=()=>{
     if(!topDownOnly())return;
-    undo.push(CityPlan.snapshot());CityPlan.plan.removedCity=[];CityPlan.changed();networkEdited();notice('Every bulldozed Boston building is back. Undo removes them again.');
+    undo.push(CityPlan.snapshot());
+    // Buildings under your own roads or buildings stay bulldozed so your plan still fits.
+    const was=new Set(CityPlan.plan.removedCity),keep=new Set(),hit=(p,r)=>CityPlan.cityNear(p,r).forEach(c=>{if(was.has(c.id)&&CityPlan.inCityRect(c,p,r))keep.add(c.id);});
+    CityPlan.plan.removedCity=[];CityPlan.changed();
+    for(const r of CityPlan.plan.roads)if(!r.fixed&&!r.real&&!r.tunnel){const n=Math.max(1,Math.ceil(CityPlan.dist(r.a,r.b)/4));for(let i=0;i<=n;i++)hit({x:r.a.x+(r.b.x-r.a.x)*i/n,z:r.a.z+(r.b.z-r.a.z)*i/n},CityPlan.roadWidth(r)/2);}
+    for(const b of CityPlan.plan.buildings)if(!b.area)hit(b,CityPlan.buildingScale(b.type)*4.2*.7);
+    CityPlan.plan.removedCity=[...keep];CityPlan.changed();networkEdited();
+    notice((was.size-keep.size)+' bulldozed Boston buildings are back'+(keep.size?'; '+keep.size+' stay removed because your roads or buildings stand there':'')+'. Undo removes them again.');
   };
   $('importLegacy').hidden=!legacySave;
   $('importLegacy').onclick=()=>{
     if(!legacySave)return;
-    undo.push(CityPlan.snapshot());importLegacy(legacySave);legacySave=null;$('importLegacy').hidden=true;networkEdited();notice('Old level save imported. Boston buildings under its roads were bulldozed; Undo reverses the import.');
+    undo.push(CityPlan.snapshot());importUndoDepth=undo.length;const result=importLegacy(legacySave);legacyImported=true;$('importLegacy').hidden=true;networkEdited();notice('Old level save imported: '+result.placed+' roads or buildings placed'+(result.skipped?', '+result.skipped+' skipped because they cross protected Boston buildings':'')+'. Undo reverses the import.');
   };
   function rotate(){rotation=(rotation+Math.PI/4)%(Math.PI*2);drawPalette();if(hoverPoint&&Object.hasOwn(stock,selection))hover(hoverPoint);}
   $('rotate').onclick=rotate;
