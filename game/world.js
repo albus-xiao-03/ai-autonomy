@@ -191,7 +191,36 @@
     const uniqueGroup=new T.Group();scene.add(uniqueGroup);
     const uniqueMaterials=new Map(),uniqueMaterial=color=>{if(!uniqueMaterials.has(color))uniqueMaterials.set(color,new T.MeshStandardMaterial({color,roughness:.9,flatShading:true}));return uniqueMaterials.get(color);};
     function uniqueColor(b){const n=(b.n||'').toLowerCase();if(n.includes('massachusetts state house'))return 0xc9885a;if(n==='boston city hall')return 0xb9b2a2;if(n.includes('quincy'))return 0xd9cdb0;if(n.includes('garden')||n.includes('north station'))return 0x8d8f8a;if(n.includes('custom house'))return 0xd8d2bf;if(n.includes('court'))return 0xcfc6b0;if(/church|shul|chapel/.test(n))return 0xe2d9c4;return [0xb5654a,0xa95b45,0xc07a5c][Math.abs(b.id)%3];}
+    // Bridge structures. Zakim: white inverted-Y cable-stayed towers aligned with the I-93 deck, with
+    // two fans of stay cables to the deck edges. Longfellow: round granite towers with conical caps.
+    const towerMaterial=new T.MeshStandardMaterial({color:0xe9e7df,roughness:.8,flatShading:true}),cableLines=[];
+    function cableTower(b){
+      const G=CITY_GROUND,H=b.h,deck=CityPlan.plan.roads.filter(r=>r.fixed&&r.bridge).map(r=>({r,q:CityPlan.projection(b,r.a,r.b)})).sort((m,n)=>CityPlan.dist(b,m.q)-CityPlan.dist(b,n.q))[0];
+      if(!deck)return false;
+      const len=CityPlan.dist(deck.r.a,deck.r.b),u={x:(deck.r.b.x-deck.r.a.x)/len,z:(deck.r.b.z-deck.r.a.z)/len},v={x:-u.z,z:u.x};
+      const deckY=y=>y,deckAt=p=>{const near=CityPlan.closestRoad(p,40);return near?CityPlan.heightAt(near.p,near.road):CityPlan.heightAt(deck.q,deck.r);};
+      const spread=19,join=H*.6,legLength=Math.hypot(spread,join),tilt=Math.atan2(spread,join),yaw=Math.atan2(u.x,u.z);
+      for(const side of [-1,1]){
+        const leg=new T.Mesh(geometries.box,towerMaterial);leg.scale.set(2.6,legLength,3.4);
+        leg.position.set(b.x+v.x*side*spread/2,G+join/2,b.z+v.z*side*spread/2);
+        leg.rotation.set(0,yaw,-side*tilt,'YXZ');leg.castShadow=true;uniqueGroup.add(leg);
+      }
+      const spire=new T.Mesh(geometries.box,towerMaterial);spire.scale.set(2.4,H-join,3.2);spire.position.set(b.x,G+join+(H-join)/2,b.z);spire.rotation.y=yaw;spire.castShadow=true;uniqueGroup.add(spire);
+      const beam=new T.Mesh(geometries.box,towerMaterial);beam.scale.set(spread*.9,1.6,3);beam.position.set(b.x,G+deckY(CityPlan.heightAt(deck.q,deck.r))-2,b.z);beam.rotation.y=yaw+Math.PI/2;uniqueGroup.add(beam);
+      for(const dir of [-1,1])for(const plane of [-1,1])for(let k=0;k<10;k++){
+        const anchor={x:b.x+u.x*dir*(14+k*11.5)+v.x*plane*14,z:b.z+u.z*dir*(14+k*11.5)+v.z*plane*14},top=G+join+4+(H-join-10)*k/9;
+        cableLines.push(new T.Vector3(b.x,top,b.z),new T.Vector3(anchor.x,G+deckAt(anchor)+1.2,anchor.z));
+      }
+      return true;
+    }
+    function stoneTower(b){
+      const G=CITY_GROUND,t=cityTile(b),P=(shape,ly,w,h,d,color)=>cpart(t,'mass',b,shape,0,ly,0,w,h,d,color),r=Math.min(b.w,b.d)/2;
+      P('round',G+b.h*.4,r,b.h*.8,r,0xb9b3a6);P('round',G+b.h*.8+.4,r*1.08,.8,r*1.08,0x8f897d);P('pine',G+b.h*.9,r*1.05,b.h*.2,r*1.05,0x6f6a62);
+      return true;
+    }
     function uniqueBuilding(b){
+      if(b.st==='cable'&&cableTower(b))return;
+      if(b.st==='stone'&&stoneTower(b))return;
       const G=CITY_GROUND,n=(b.n||'').toLowerCase(),church=/church|shul|chapel/.test(n),bodyH=church?Math.min(b.h,16):Math.max(6,b.h);
       const geo=new T.ExtrudeGeometry(new T.Shape(b.fp.map(([x,z])=>new T.Vector2(x,-z))),{depth:bodyH,bevelEnabled:false});geo.rotateX(-Math.PI/2);
       const mesh=new T.Mesh(geo,uniqueMaterial(uniqueColor(b)));mesh.position.set(b.x,G,b.z);mesh.castShadow=mesh.receiveShadow=true;mesh.userData.cityId=b.id;uniqueGroup.add(mesh);
@@ -253,6 +282,7 @@
       }
       for(const [shape,list] of Object.entries(massByShape))instance(massGroup,list,shape,true,true);
       lockOutlines();
+      if(cableLines.length)scene.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(cableLines),new T.LineBasicMaterial({color:0xf3f1ea})));
     }
     let cityGone=new Set();
     // Hide bulldozed buildings (and restore them on undo) by touching only the changed instances.

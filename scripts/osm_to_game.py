@@ -102,6 +102,9 @@ for el in els:
     if name and kind in ("unique", "fire", "police", "medical"): row["n"] = name
     if kind in ("unique", "fire", "police", "medical"):
         row["fp"] = [[round(x - cx, 1), round(z - cz, 1)] for x, z in simplify(ring)]
+    # Bridge structures get their own models: cable-stayed towers (Zakim) and stone towers (Longfellow).
+    if t.get("building") == "tower" and t.get("man_made") == "pier" and h >= 60: row["st"] = "cable"
+    elif t.get("man_made") == "tower" and t.get("tower:construction") == "stone": row["st"] = "stone"
     if kind == "res":
         row["s"] = (el["id"] * 2654435761) % 4  # one of four residential styles, stable per building
         res_ids.append(len(rows))
