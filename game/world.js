@@ -296,6 +296,7 @@
     }
     function updateCityLod(halfWidth,halfHeight){
       const pad=tilt?2.2:1.15;
+      trafficView={minX:pan.x-halfWidth*pad*1.3,maxX:pan.x+halfWidth*pad*1.3,minZ:pan.z-halfHeight*pad*1.3,maxZ:pan.z+halfHeight*pad*1.3};
       for(const t of cityTiles.values()){
         const inView=t.minX<pan.x+halfWidth*pad&&t.minX+CITY_TILE>pan.x-halfWidth*pad&&t.minZ<pan.z+halfHeight*pad&&t.minZ+CITY_TILE>pan.z-halfHeight*pad;
         t.groups.detail.visible=scale>=3&&inView;t.groups.fine.visible=scale>=6&&inView;
@@ -731,7 +732,12 @@
     const TRAFFIC_MAX=1600,TRAFFIC_RESIDENTS_PER_CAR=18,TRAFFIC_MIN_ZOOM=1.6,CAR_SPACE=5.6,trafficCars=[],trafficColors=[0xd87451,0xe7c16d,0x729eaa,0xb7c9ad,0xe8e4d8,0x3f4a52,0x9b3b34];
     let trafficGraph=null,trafficRevision=-1,trafficSeed=7,trafficMinute=480,trafficPaused=false,trafficDirty=true,trafficShown=0,lastRender=0,trafficClock=0;
     let trafficIncidents=[],trafficIncidentKey='',trafficBlocks=new Map(),trafficBlocksFor='';
-    const trafficRerouteChoices={total:0,avoided:0};
+    const trafficRerouteChoices={total:0,avoided:0},trafficStats={entered:0,exited:0,visibleSpawns:0,visibleRemovals:0,edgeExits:0,edgeEntries:0};
+    // Area on screen (set from the camera); cars are only added or removed outside it or underground,
+    // so nobody sees a car pop in or vanish.
+    let trafficView=null;
+    const roadHeight=(e,s)=>{const p={x:e.a.x+e.dir.x*s,z:e.a.z+e.dir.z*s};return e.road.bridge||e.road.fixed||e.road.tunnel?CityPlan.heightAt(p,e.road):0;};
+    const carHidden=(e,s)=>{if(roadHeight(e,s)<-1)return true;if(!trafficView)return true;const x=e.a.x+e.dir.x*s,z=e.a.z+e.dir.z*s;return x<trafficView.minX||x>trafficView.maxX||z<trafficView.minZ||z>trafficView.maxZ;};
     let trafficBodies=null,trafficRoofs=null,trafficWheels=null;const trafficObject=new T.Object3D();
     const trafficRand=()=>((trafficSeed=Math.imul(trafficSeed,1664525)+1013904223>>>0)/4294967296);
     const nodeKey=p=>p.x.toFixed(1)+','+p.z.toFixed(1);
@@ -740,14 +746,17 @@
     function buildTrafficGraph(){
       const nodes=new Map(),edges=[],byKey=new Map(),signals=new Map(),stops=new Map();
       for(const r of CityPlan.plan.roads){
-        if(r.tunnel||(CityPlan.roadBlocked(r)&&!crashNear(r)))continue;
+        if(CityPlan.roadBlocked(r)&&!crashNear(r))continue; // tunnels included: cars drive through them hidden
         const len=CityPlan.dist(r.a,r.b);if(len<1)continue;
         const oneway=r.type==='oneway'||!!r.oneway;
         const add=(a,b,forward)=>{const e={id:edges.length,from:nodeKey(a),to:nodeKey(b),a,b,len,road:r,oneway,width:CityPlan.roadWidth(r),dir:{x:(b.x-a.x)/len,z:(b.z-a.z)/len}};edges.push(e);if(!nodes.has(e.from))nodes.set(e.from,[]);nodes.get(e.from).push(e);byKey.set(r.id+(forward?'>':'<'),e);};
         add(r.a,r.b,true);if(!oneway)add(r.b,r.a,false);
       }
+      // Roads that cross into the map: new cars drive in over the edge here.
+      const B=CityPlan.activeBounds,inside=p=>p.x>=B.minX&&p.x<=B.maxX&&p.z>=B.minZ&&p.z<=B.maxZ,entries=[];
+      for(const e of edges){if(inside(e.a)||!inside(e.b))continue;let lo=0,hi=e.len;for(let i=0;i<20;i++){const mid=(lo+hi)/2;if(inside({x:e.a.x+e.dir.x*mid,z:e.a.z+e.dir.z*mid}))hi=mid;else lo=mid;}entries.push({edge:e,s:hi+.5});}
       for(const c of CityPlan.plan.controls){const k=nodeKey(c);if(c.kind==='signal')signals.set(k,c);else{if(!stops.has(k))stops.set(k,[]);stops.get(k).push(c);}}
-      return {nodes,edges,byKey,signals,stops,total:edges.reduce((sum,e)=>sum+e.len,0)};
+      return {nodes,edges,byKey,signals,stops,entries,total:edges.reduce((sum,e)=>sum+e.len,0)};
     }
     function computeTrafficBlocks(){
       trafficBlocks=new Map();
@@ -769,9 +778,16 @@
     }
     const laneOf=(edge,car)=>edge.id*2+(edge.oneway&&edge.width>7&&car.lane>0?1:0);
     function spawnTrafficCar(lanes){
-      for(let attempt=0;attempt<6;attempt++){
+      const B=CityPlan.activeBounds,inMap=(e,s)=>{const x=e.a.x+e.dir.x*s,z=e.a.z+e.dir.z*s;return x>=B.minX&&x<=B.maxX&&z>=B.minZ&&z<=B.maxZ;};
+      const entries=trafficGraph.entries;
+      if(entries.length&&trafficRand()<.35){
+        const entry=entries[Math.floor(trafficRand()*entries.length)],car={edge:entry.edge,s:entry.s,v:6,v0:7+trafficRand()*6,lane:trafficRand()<.5?-1:1,color:trafficColors[Math.floor(trafficRand()*trafficColors.length)],next:null,stuck:0};
+        const list=lanes.get(laneOf(entry.edge,car))||[];
+        if(!trafficBlocks.has(entry.edge)&&!list.some(o=>Math.abs(o.s-car.s)<CAR_SPACE*2)){trafficStats.edgeEntries++;return car;}
+      }
+      for(let attempt=0;attempt<12;attempt++){
         const edge=pickTrafficEdge(),car={edge,s:trafficRand()*edge.len,v:0,v0:7+trafficRand()*6,lane:trafficRand()<.5?-1:1,color:trafficColors[Math.floor(trafficRand()*trafficColors.length)],next:null,stuck:0};
-        if(trafficBlocks.has(edge))continue;
+        if(trafficBlocks.has(edge)||!carHidden(edge,car.s)||!inMap(edge,car.s))continue;
         const list=lanes.get(laneOf(edge,car))||[];if(list.some(o=>Math.abs(o.s-car.s)<CAR_SPACE*1.5))continue;
         return car;
       }
@@ -792,7 +808,7 @@
           const signal=trafficGraph.signals.get(e.to);
           if(signal){const st=CityPlan.signalState(signal,trafficClock/60,Math.abs(e.dir.x)>=Math.abs(e.dir.z));if(st!=='green'&&car.s<e.len-6)stopAt=Math.min(stopAt,e.len-7);}
           else if(!car.stopDone){const stop=(trafficGraph.stops.get(e.to)||[]).find(c=>-(c.approach.x*e.dir.x+c.approach.z*e.dir.z)>.8);if(stop){if(car.s>=e.len-9&&car.v<.4)car.stopTimer=(car.stopTimer||0)+dt;if(car.stopTimer>1.5)car.stopDone=true;else stopAt=Math.min(stopAt,e.len-7.5);}}
-          if(!car.next)stopAt=Math.min(stopAt,e.len-2);
+          if(!car.next){if(car.s>=e.len-3){respawn.push(car);continue;}stopAt=Math.min(stopAt,e.len-2);} // map edge or dead end: the car leaves here
           else{const t=tail(laneOf(car.next,car));if(t<CAR_SPACE+1)stopAt=Math.min(stopAt,e.len-(CAR_SPACE+1-t));}
           const gap=Math.min(leader?leader.s-car.s-CAR_SPACE:Infinity,stopAt-car.s);
           const desired=Math.max(0,Math.min(car.v0,(gap-1)/1.1));
@@ -801,6 +817,8 @@
           const startEdge=e;
           while(car.s>e.len&&car.next){car.s-=e.len;car.edge=car.next;car.next=null;car.stopDone=false;car.stopTimer=0;e=car.edge;const k=laneOf(e,car);if(!lanes.has(k))lanes.set(k,[]);lanes.get(k).push(car);}
           if(car.s>e.len)car.s=e.len;
+          {const B=CityPlan.activeBounds,x=e.a.x+e.dir.x*car.s,z=e.a.z+e.dir.z*car.s;if(x<B.minX||x>B.maxX||z<B.minZ||z>B.maxZ){trafficStats.edgeExits++;car.leftMap=true;respawn.push(car);continue;}}
+          const under=roadHeight(e,car.s)<-1;if(car.under!==undefined&&under!==car.under){if(under)trafficStats.entered++;else trafficStats.exited++;}car.under=under;
           // Cars waiting in a queue (behind a crash or a stopped car) stay put until it clears; only a car
           // stuck for a long time with nothing ahead of it (dead end, gridlock) is recycled.
           const queued=trafficBlocks.has(e)||(leader&&leader.v<.2&&leader.s-car.s<CAR_SPACE+3);
@@ -821,23 +839,23 @@
       for(const list of lanes.values())list.sort((a,b)=>b.s-a.s);
       const target=trafficGraph.edges.length?Math.round(Math.min(TRAFFIC_MAX,CityPlan.cityPopulation()/TRAFFIC_RESIDENTS_PER_CAR)*trafficDensity(trafficMinute)):0;
       for(let added=0;trafficCars.length<target&&added<40;added++){const car=spawnTrafficCar(lanes);if(!car)break;trafficCars.push(car);const k=laneOf(car.edge,car);if(!lanes.has(k))lanes.set(k,[]);lanes.get(k).push(car);lanes.get(k).sort((a,b)=>b.s-a.s);trafficDirty=true;}
-      if(trafficCars.length>target){trafficCars.length=target;trafficDirty=true;}
+      if(trafficCars.length>target){for(let i=trafficCars.length-1;i>=0&&trafficCars.length>target;i--)if(carHidden(trafficCars[i].edge,trafficCars[i].s))trafficCars.splice(i,1);trafficDirty=true;}
       if(!trafficBodies){
         trafficBodies=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX);trafficRoofs=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX);trafficWheels=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX*4);
         for(const m of [trafficBodies,trafficRoofs,trafficWheels]){m.frustumCulled=false;m.count=0;scene.add(m);}
         for(let i=0;i<TRAFFIC_MAX;i++){trafficRoofs.setColorAt(i,new T.Color(0x344f58));for(let j=0;j<4;j++)trafficWheels.setColorAt(i*4+j,new T.Color(0x263330));}
       }
       const visible=scale>=TRAFFIC_MIN_ZOOM,moving=!trafficPaused&&dt>0;
-      if(moving){trafficClock+=dt;for(const car of moveTraffic(dt,lanes)){const fresh=spawnTrafficCar(lanes);if(fresh)Object.assign(car,fresh);}}
+      if(moving){trafficClock+=dt;for(const car of moveTraffic(dt,lanes)){if(!car.leftMap&&!carHidden(car.edge,car.s))trafficStats.visibleRemovals++;car.leftMap=false;const fresh=spawnTrafficCar(lanes);if(fresh)Object.assign(car,fresh);else{car.v=0;car.stuck=0;}}}
       if(!visible){if(trafficShown){trafficBodies.count=trafficRoofs.count=trafficWheels.count=0;trafficShown=0;return true;}return false;}
       if(!moving&&!trafficDirty&&trafficShown===trafficCars.length)return false;
       trafficCars.forEach((car,i)=>{
         const e=car.edge,d=e.dir,offset=e.oneway?(e.width>7?car.lane*e.width/4:0):e.width/4;
-        const p={x:e.a.x+d.x*car.s,z:e.a.z+d.z*car.s},x=p.x-d.z*offset,z=p.z+d.x*offset,ground=e.road.bridge||e.road.fixed?CityPlan.heightAt(p,e.road):0,heading=Math.atan2(d.x,d.z);
-        trafficObject.position.set(x,ground+1.25,z);trafficObject.rotation.set(0,heading,0);trafficObject.scale.set(2.1,.9,4.4);trafficObject.updateMatrix();trafficBodies.setMatrixAt(i,trafficObject.matrix);
+        const p={x:e.a.x+d.x*car.s,z:e.a.z+d.z*car.s},x=p.x-d.z*offset,z=p.z+d.x*offset,ground=roadHeight(e,car.s),heading=Math.atan2(d.x,d.z),shown=ground<-1?0:1;
+        trafficObject.position.set(x,ground+1.25,z);trafficObject.rotation.set(0,heading,0);trafficObject.scale.set(2.1*shown,.9*shown,4.4*shown);trafficObject.updateMatrix();trafficBodies.setMatrixAt(i,trafficObject.matrix);
         if(trafficDirty)trafficBodies.setColorAt(i,new T.Color(car.color));
-        trafficObject.position.set(x,ground+2,z);trafficObject.scale.set(1.65,.65,2.25);trafficObject.updateMatrix();trafficRoofs.setMatrixAt(i,trafficObject.matrix);
-        for(let j=0;j<4;j++){const wx=j%2?1.02:-1.02,wz=j<2?-1.35:1.35;trafficObject.position.set(x+wx*Math.cos(heading)+wz*Math.sin(heading),ground+.78,z-wx*Math.sin(heading)+wz*Math.cos(heading));trafficObject.scale.set(.42,.65,.85);trafficObject.updateMatrix();trafficWheels.setMatrixAt(i*4+j,trafficObject.matrix);}
+        trafficObject.position.set(x,ground+2,z);trafficObject.scale.set(1.65*shown,.65*shown,2.25*shown);trafficObject.updateMatrix();trafficRoofs.setMatrixAt(i,trafficObject.matrix);
+        for(let j=0;j<4;j++){const wx=j%2?1.02:-1.02,wz=j<2?-1.35:1.35;trafficObject.position.set(x+wx*Math.cos(heading)+wz*Math.sin(heading),ground+.78,z-wx*Math.sin(heading)+wz*Math.cos(heading));trafficObject.scale.set(.42*shown,.65*shown,.85*shown);trafficObject.updateMatrix();trafficWheels.setMatrixAt(i*4+j,trafficObject.matrix);}
       });
       trafficBodies.count=trafficRoofs.count=trafficCars.length;trafficWheels.count=trafficCars.length*4;trafficShown=trafficCars.length;
       for(const m of [trafficBodies,trafficRoofs,trafficWheels])m.instanceMatrix.needsUpdate=true;
