@@ -699,6 +699,7 @@
     const TRAFFIC_MAX=1600,TRAFFIC_RESIDENTS_PER_CAR=18,TRAFFIC_MIN_ZOOM=1.6,CAR_SPACE=5.6,trafficCars=[],trafficColors=[0xd87451,0xe7c16d,0x729eaa,0xb7c9ad,0xe8e4d8,0x3f4a52,0x9b3b34];
     let trafficGraph=null,trafficRevision=-1,trafficSeed=7,trafficMinute=480,trafficPaused=false,trafficDirty=true,trafficShown=0,lastRender=0,trafficClock=0;
     let trafficIncidents=[],trafficIncidentKey='',trafficBlocks=new Map(),trafficBlocksFor='';
+    const trafficRerouteChoices={total:0,avoided:0};
     let trafficBodies=null,trafficRoofs=null,trafficWheels=null;const trafficObject=new T.Object3D();
     const trafficRand=()=>((trafficSeed=Math.imul(trafficSeed,1664525)+1013904223>>>0)/4294967296);
     const nodeKey=p=>p.x.toFixed(1)+','+p.z.toFixed(1);
@@ -722,9 +723,14 @@
     }
     function pickTrafficEdge(){let t=trafficRand()*trafficGraph.total;for(const e of trafficGraph.edges){t-=e.len;if(t<=0)return e;}return trafficGraph.edges[0];}
     function nextTrafficEdge(car){
-      // Drivers do not know about a crash until they are on that street, so they can end up queued behind it.
+      // About half of drivers hear about a crash ahead (radio, navigation) and turn away when another street
+      // is open; the others drive in and stay stuck behind it until responders clear it. Cars already on the
+      // blocked street, or with no other way to go, cannot avoid it.
       const options=trafficGraph.nodes.get(car.edge.to)||[],forward=options.filter(e=>e.to!==car.edge.from);
-      const list=forward.length?forward:options;
+      const open=forward.filter(e=>!trafficBlocks.has(e)),blockedAhead=open.length<forward.length;
+      if(blockedAhead&&open.length)trafficRerouteChoices.total++;
+      const aware=blockedAhead&&open.length>0&&trafficRand()<.5;if(aware)trafficRerouteChoices.avoided++;
+      const list=aware?open:forward.length?forward:options;
       if(!list.length)return null;
       let total=0;const weights=list.map(e=>{const w=1.25+e.dir.x*car.edge.dir.x+e.dir.z*car.edge.dir.z;total+=w;return w;});
       let t=trafficRand()*total;for(let i=0;i<list.length;i++){t-=weights[i];if(t<=0)return list[i];}return list[list.length-1];
@@ -763,8 +769,10 @@
           const startEdge=e;
           while(car.s>e.len&&car.next){car.s-=e.len;car.edge=car.next;car.next=null;car.stopDone=false;car.stopTimer=0;e=car.edge;const k=laneOf(e,car);if(!lanes.has(k))lanes.set(k,[]);lanes.get(k).push(car);}
           if(car.s>e.len)car.s=e.len;
-          // A car stuck for a long time not behind a crash (dead end, gridlock) is recycled.
-          car.stuck=car.v<.1&&!trafficBlocks.has(e)?car.stuck+dt:0;if(car.stuck>45)respawn.push(car);
+          // Cars waiting in a queue (behind a crash or a stopped car) stay put until it clears; only a car
+          // stuck for a long time with nothing ahead of it (dead end, gridlock) is recycled.
+          const queued=trafficBlocks.has(e)||(leader&&leader.v<.2&&leader.s-car.s<CAR_SPACE+3);
+          car.stuck=car.v<.1&&!queued?car.stuck+dt:0;if(car.stuck>45)respawn.push(car);
           leader=car.edge===startEdge?car:null;
         }
       }
