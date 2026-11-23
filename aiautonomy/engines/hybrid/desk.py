@@ -40,6 +40,7 @@ from aiautonomy.engines.mayor.providers import (
     MayorProvider,
     MayorRequest,
     ProviderReply,
+    ReplayedTimeout,
     baseline_proposal,
 )
 
@@ -284,7 +285,7 @@ class MayorDesk:
         remaining = self.deadline - time.monotonic()
         if not self.task.done() and remaining > 0:
             await asyncio.wait({self.task}, timeout=remaining)
-        if self.task.done() and not self.task.cancelled():
+        if self.task.done() and not self.task.cancelled() and not self._replayed_timeout():
             self.reply = self.task.result()
         else:
             self._drop_task()
@@ -492,6 +493,10 @@ class MayorDesk:
         self._record(decision, "requested", observation=observation)
 
     # --- cancel ---------------------------------------------------------------------------
+
+    def _replayed_timeout(self) -> bool:
+        assert self.task is not None
+        return isinstance(self.task.exception(), ReplayedTimeout)
 
     def _drop_task(self) -> None:
         if self.task is not None and not self.task.done():

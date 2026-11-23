@@ -88,6 +88,7 @@ class HybridRecorder:
             "data_files": [ref.model_dump() for ref in run.setup.data_files],
             "seeds": {"run_seed": run.config.seed, "streams": dict(run.stream_seeds)},
             "backends": {"mayor": run.mayor_backend, "resident": "local"},
+            "inference": run.setup.inference.model_dump(mode="json"),
         }
         write_json_atomic(run_dir / MANIFEST, manifest)
         for name in (OBSERVATIONS, OUTCOMES, DECISIONS, INTERVENTIONS):

@@ -38,6 +38,14 @@ SYSTEM = (
 MAX_STATEMENT = 280
 
 
+class ReplayedTimeout(Exception):
+    """Raised by a replay provider for a reply that was recorded as missing (a timeout).
+
+    The desks treat it exactly like a reply that never came within the wait, so a replayed
+    hold carries the same reason without waiting on the wall clock.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class MayorRequest:
     decision_id: str

@@ -92,15 +92,27 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_replay(args: argparse.Namespace) -> int:
-    from aiautonomy.engines.record.replay import ReplayError, replay_run, resolve_run_dir
+    from aiautonomy.engines.record.hybrid_replay import HybridReplayReport
+    from aiautonomy.engines.record.replay import ReplayError, replay_any, resolve_run_dir
 
+    maps_dir = Path(args.maps_dir).resolve() if args.maps_dir else None
     try:
-        report = replay_run(resolve_run_dir(args.run, _runs_dir(args)))
+        report = replay_any(resolve_run_dir(args.run, _runs_dir(args)), maps_dir)
     except ReplayError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     for warning in report.warnings:
         print(f"warning: {warning}")
+    if isinstance(report, HybridReplayReport):
+        if report.divergence is not None:
+            print(f"DIVERGED at tick {report.divergence_tick}: {report.divergence}")
+            return 1
+        print(
+            f"replay OK: {report.run_id}: {report.ticks_compared} ticks identical (state hashes "
+            f"and outcomes); outcome recorded {report.recorded_outcome}, replayed "
+            f"{report.replayed_outcome}; final hash {report.final_hash}"
+        )
+        return 0
     if report.divergence is not None:
         divergence = report.divergence
         print(
@@ -159,6 +171,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay = commands.add_parser("replay", help="replay a recorded run without inference")
     replay.add_argument("run", help="run id or run directory")
     replay.add_argument("--runs-dir", default=None)
+    replay.add_argument("--maps-dir", default=None, help="user map saves (hybrid runs)")
     replay.set_defaults(func=cmd_replay)
 
     trace_parser = commands.add_parser("trace", help="write docs/traceability.md")

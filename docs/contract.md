@@ -364,7 +364,13 @@ Each run writes `runs/<run_id>/`:
 - `ticks.jsonl`: the state hash per tick.
 - `final_report.json`.
 
-`aia replay <run>` rebuilds the run from these files with inference disabled and checks every tick's hash. It also compares the assignments, arrival ticks and authority history.
+`aia replay <run> [--maps-dir DIR]` rebuilds the run with inference disabled, from these inputs:
+
+- the pinned map; a map whose content changed since the run is refused;
+- the recorded seeds, config and inference settings;
+- the recorded observations, injected disruptions, resident requests and model replies (a recorded timeout replays as the same hold or fallback, without waiting).
+
+It checks every tick's state hash and full outcome against the recording: assignments and travel times, arrival ticks, queues, orders, authority history, politics and the terminal outcome. The manifest also records the inference settings (model names and limits, never credentials).
 
 ## 12. Legacy routes (transitional)
 

@@ -82,6 +82,10 @@ async def decide(
 # --- run-scoped resident decisions (docs/contract.md §7) ----------------------------------
 
 
+class ReplayedTimeout(Exception):
+    """Raised by a replay provider for a resident reply recorded as missing (a timeout)."""
+
+
 @dataclass(frozen=True, slots=True)
 class ResidentBatch:
     """One batched request: LLM residents' observations, the offered actions, public context."""

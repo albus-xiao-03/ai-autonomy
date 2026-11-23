@@ -2285,8 +2285,8 @@ This appendix is the plan and resume point for the engine work requested in the 
 | C6 | Seven disruptions: catalog, automatic, scheduled, injected | done | `88295bd` | 13 disruption tests; effect values proposed, need interface-agent confirmation |
 | C7 | Mayor decisions, exceptional orders, authority cost, legacy routes on the run store | done | `0429321` | 262 pytest; live game check against the legacy routes |
 | C8 | Politics (petition, protest, recall vote, withdrawal, removal) and run-scoped resident decisions | done | `51a33e8` | 270 pytest; rules proposed |
-| C9 | Local resident inference: configured models, installed-artifact check | done | (this commit) | fakes plus a live sandbox smoke |
-| C10 | Hybrid replay and the Boston trace checked against the game | not started | — | |
+| C9 | Local resident inference: configured models, installed-artifact check | done | `91091af` | fakes plus a live sandbox smoke |
+| C10 | Hybrid replay and the Boston trace checked against the game | done | (this commit) | 5 trace tests; `node tests/boston-trace.cjs` |
 | C11 | Part B reconciliation, status tables, handoff | not started | — | |
 
 Every feature commit must pass `make check-engines`, `make check-schema` and `make check-trace`. After a protocol change it must also pass `npm run typecheck` and `npm test`, and every `node tests/*.cjs` the feature touches.

@@ -18,6 +18,11 @@ from aiautonomy.engines.agents.clients import no_inference_clients
 from aiautonomy.engines.core.datafiles import DataFileRef, sha256_file
 from aiautonomy.engines.core.paths import repo_root
 from aiautonomy.engines.core.version import engine_version
+from aiautonomy.engines.record.hybrid_replay import (
+    HybridReplayError,
+    HybridReplayReport,
+    replay_hybrid,
+)
 from aiautonomy.engines.record.recorder import DECISIONS, INTERVENTIONS, MANIFEST, TICKS, read_json
 from aiautonomy.engines.sim.config import ResolvedConfig, RunConfig
 from aiautonomy.engines.sim.run import Run, TickResult
@@ -119,6 +124,17 @@ def _check_versions(manifest: Mapping[str, Any], report: ReplayReport) -> None:
             report.warnings.append(f"data file {entry.get('path')} is no longer present")
         elif sha256_file(path) != entry.get("sha256"):
             report.warnings.append(f"data file {entry.get('path')} changed since the recording")
+
+
+def replay_any(run_dir: Path, maps_dir: Path | None = None) -> ReplayReport | HybridReplayReport:
+    """Replay a toy run or a hybrid Boston run, by the manifest's kind."""
+    manifest = read_json(run_dir / MANIFEST)
+    if manifest.get("kind") == "boston_hybrid":
+        try:
+            return replay_hybrid(run_dir, manifest, maps_dir)
+        except HybridReplayError as exc:
+            raise ReplayError(str(exc)) from exc
+    return replay_run(run_dir)
 
 
 def replay_run(run_dir: Path) -> ReplayReport:

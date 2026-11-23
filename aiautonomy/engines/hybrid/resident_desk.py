@@ -29,7 +29,12 @@ from aiautonomy.engines.contract.decisions import (
 )
 from aiautonomy.engines.core.canonical import canonical_json
 from aiautonomy.engines.hybrid.errors import RunError
-from aiautonomy.engines.residents.llm import ResidentBatch, ResidentProvider, ResidentReply
+from aiautonomy.engines.residents.llm import (
+    ReplayedTimeout,
+    ResidentBatch,
+    ResidentProvider,
+    ResidentReply,
+)
 
 if TYPE_CHECKING:
     from aiautonomy.engines.hybrid.run import HybridRun, TickParts
@@ -206,7 +211,7 @@ class ResidentDesk:
         remaining = self.deadline - time.monotonic()
         if not self.task.done() and remaining > 0:
             await asyncio.wait({self.task}, timeout=remaining)
-        if self.task.done() and not self.task.cancelled():
+        if self.task.done() and not self.task.cancelled() and not self._replayed_timeout():
             self.reply = self.task.result()
         else:
             self._drop()
@@ -263,6 +268,10 @@ class ResidentDesk:
         return acts
 
     # --- cancel and records --------------------------------------------------------------
+
+    def _replayed_timeout(self) -> bool:
+        assert self.task is not None
+        return isinstance(self.task.exception(), ReplayedTimeout)
 
     def _drop(self) -> None:
         if self.task is not None and not self.task.done():
