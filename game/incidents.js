@@ -5,7 +5,9 @@ window.CityIncidents = (() => {
     storm:{label:'Severe storm',radius:125,severity:55,damage:15,duration:120,fallback:'repair'},
     earthquake:{label:'Earthquake',radius:145,severity:75,damage:45,duration:0,fallback:'repair'},
     fire:{label:'Building fire',radius:90,severity:65,damage:35,duration:0,fallback:'dispatch'},
-    protest:{label:'Protest',radius:80,severity:50,damage:0,duration:180,fallback:'mediate'}
+    protest:{label:'Protest',radius:80,severity:50,damage:0,duration:180,fallback:'mediate'},
+    // A crash closes the street at that spot until 911 responders clear it; cars queue behind it.
+    traffic:{label:'Traffic collision',radius:12,severity:30,damage:0,duration:0,fallback:'dispatch'}
   };
   function create(options){
     const incidents=[],units=[];
@@ -41,6 +43,11 @@ window.CityIncidents = (() => {
       if(protectedPoint){options.record('City Hall’s protected zone is holding.','Incident averted','Applied',spec.label+' stayed outside the protected core.',incident.district);return '';}
       const district=options.districts().find(d=>d.name===incident.district);
       if(district){district.authority=Math.max(0,district.authority-(kind==='protest'?18:8));district.status=district.authority<40?'Contested':district.authority<65?'Strained':'Stable';}
+      if(kind==='traffic'){
+        incident.response='911 dispatch';incident.nextReview=Infinity;
+        options.record('A collision is blocking the street in '+incident.district+'. 911 is sending police and an ambulance.','Incident reported','Reported','Traffic is stopped behind the crash.',incident.district).source='911 dispatch';
+        updateNetwork();dispatch911(incident);return '';
+      }
       options.record(spec.label+' reported in '+incident.district+'. I’m reviewing the blocked routes and local needs.','Incident reported','Reported',incident.affectedSites.length+' sites affected.',incident.district);
       updateNetwork();return '';
     }
@@ -56,6 +63,16 @@ window.CityIncidents = (() => {
       if(cached?.revision===CityPlan.revision)return cached.value;
       const value={cityHall:!!stagingRoute(incident,CITY_HALL),massGeneral:!!stagingRoute(incident,CITY_HOSPITAL)};
       accessCache.set(incident.id,{revision:CityPlan.revision,value});return value;
+    }
+    // Standing 911 dispatch for collisions: no mayor approval, no authority check.
+    function dispatch911(incident){
+      for(const [source,kind,label] of [[CITY_HALL,'police','Police'],[CITY_HOSPITAL,'ambulance','Ambulance']]){
+        const staged=stagingRoute(incident,source);
+        if(!staged){options.record('911 cannot reach the collision from '+(source===CITY_HALL?'City Hall':'Mass General')+'.','Response blocked','Blocked','No open route to the crash.',incident.district).source='911 dispatch';incident.nextReview=now()+5;continue;}
+        const log=options.record('911 dispatch: '+label.toLowerCase()+' sent to the collision.','Emergency response dispatched','Applied',label+' en route to the crash.',incident.district);log.source='911 dispatch';
+        units.push({id:'unit-'+(++serial),incidentId:incident.id,action:'dispatch',kind,status:'enroute',path:staged.path,point:staged.point,startedAt:now(),log,work:25});
+      }
+      incident.response=units.some(u=>u.incidentId===incident.id)?'911 units en route':'911 cannot reach the crash';
     }
     function respond(incident,action,statement){
       if(!active().includes(incident))return;
@@ -78,7 +95,7 @@ window.CityIncidents = (() => {
         incident.response='Response in progress';return;
       }
       const district=options.districts().find(d=>d.name===incident.district);
-      if(district?.authority<40){incident.response='Dispatch refused';options.record(thought,'Dispatch refused','Refused','District crews declined the order. Rebuild authority with outreach.',incident.district);return;}
+      if(district?.authority<40&&incident.kind!=='traffic'){incident.response='Dispatch refused';options.record(thought,'Dispatch refused','Refused','District crews declined the order. Rebuild authority with outreach.',incident.district);return;}
       const source=action==='dispatch'&&incident.kind==='flood'?CITY_HOSPITAL:CITY_HALL;
       const staged=stagingRoute(incident,source);
       if(!staged){incident.response='Needs road access';options.record(thought,'Response blocked','Blocked','Connect '+(source===CITY_HALL?'City Hall’s service point':'Mass General’s EMS point')+' to an open road near the incident.',incident.district);return;}
@@ -99,7 +116,17 @@ window.CityIncidents = (() => {
         else{unit.status='blocked';unit.log.outcome='Road changes interrupted this response.';incident.response='Needs an open route';incident.nextReview=now()+5;}
       }
     }
+    // Collisions happen on busy real streets, more often at rush hour (deterministic per minute).
+    function collisionChance(minute){const h=minute/60,peak=(c,w)=>Math.exp(-((h-c)*(h-c))/(2*w*w));return .0015+.006*Math.max(peak(8,1.1),peak(17.5,1.3));}
+    function hash(n){n=Math.imul(n^61^(n>>>16),9);n^=n>>>4;n=Math.imul(n,0x27d4eb2d);n^=n>>>15;return (n>>>0)/4294967296;}
+    function maybeCollision(){
+      const minute=now();if(hash(minute*7919+serial)>=collisionChance(minute))return;
+      const streets=CityPlan.plan.roads.filter(r=>r.real&&!r.bridge&&!r.tunnel&&!CityPlan.roadBlocked(r));if(!streets.length)return;
+      const weight=r=>CityPlan.dist(r.a,r.b)*(r.width>=8?3:1);let t=hash(minute*104729+1)*streets.reduce((sum,r)=>sum+weight(r),0);
+      for(const r of streets){t-=weight(r);if(t<=0){spawn('traffic',{x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2});return;}}
+    }
     function tick(){
+      if(scheduled&&active().filter(i=>i.kind==='traffic').length<2)maybeCollision();
       if(scheduled&&now()===585){
         const site=options.sites().find(s=>s.type==='office')||options.sites()[0];
         if(site)spawn('protest',site);
@@ -124,7 +151,7 @@ window.CityIncidents = (() => {
           unit.status='onsite';unit.arrivedAt=now();incident.response='Crews working';
           unit.log.outcome='Response arrived at a safe staging point.';
         }
-        const work=unit.action==='evacuate'?20:unit.action==='repair'?60:45;
+        const work=unit.work||(unit.action==='evacuate'?20:unit.action==='repair'?60:45);
         if(unit.status==='onsite'&&now()-unit.arrivedAt>=work){
           unit.status='complete';
           if(unit.action==='evacuate'){

@@ -82,6 +82,7 @@ for el in els:
     if amen == "fire_station": kind = "fire"
     elif amen == "police": kind = "police"
     elif b == "hospital" or amen in ("hospital", "clinic"): kind = "medical"
+    elif t.get("man_made") == "tower" or b == "tower": kind = "unique"  # bridge towers etc.: structures, no residents
     elif t.get("historic") or b in UNIQUE_BUILDING or amen in ("place_of_worship", "townhall", "courthouse") \
             or any(name.lower() == u.lower() or name.lower().startswith(u.lower() + " ") or name.lower().startswith("the " + u.lower()) for u in UNIQUE_NAMES) or "courthouse" in name.lower() or "church" in name.lower(): kind = "unique"
     elif b in RES: kind = "res"

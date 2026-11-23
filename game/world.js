@@ -133,7 +133,8 @@
     }
     CityPlan.polygons.forEach((poly,i)=>landShape(poly,CityPlan.holes[i]));
     box(0,-14,0,18000,1,18000,0x6598ac);
-    for(const c of CityPlan.landmarks.filter(l=>l.site==='common')) {
+    // The old arcade Boston Common model (outside the map) only exists in the old layout.
+    for(const c of CityPlan.landmarks.filter(l=>l.site==='common'&&CityPlan.layout==='arcade')) {
       origin=c;modelScale=c.scale||8;landmark(c);origin=null;modelScale=1;
     }
     flush();
@@ -277,7 +278,7 @@
     let previewLine=null;
     const labelsLayer=document.createElement('div');labelsLayer.className='maplabels';container.append(labelsLayer);
     let labels=[];
-    function refreshLabels(){labelsLayer.replaceChildren();labels=[...latestIncidents.filter(i=>!['resolved','averted'].includes(i.status)).map(i=>({name:i.label.toUpperCase()+' · '+i.response,x:i.x,z:i.z,incident:true})),...CityPlan.landmarks,...CityPlan.highwayGates(),...CityPlan.highwayRamps(),...CityPlan.servicePoints(),...CityPlan.city.filter(b=>b.n&&(['fire','police'].includes(b.k)||/^(paul revere house|faneuil hall|old state house|museum of science|north station|old west church|the vilna shul|otis house museum|old north church)$/i.test(b.n))).map(b=>({name:b.n.replace('Boston Fire Department ','Fire · ').replace('Boston Police Department ','Police · '),x:b.x,z:b.z,height:b.h+12})),...CityPlan.plan.buildings.filter(b=>b.area),...[...new Map(CityPlan.plan.roads.filter(r=>r.real&&r.bridge&&r.name&&r.pathStart===0&&!CityPlan.land({x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2})).map(r=>[r.name,{name:r.name.toUpperCase(),x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true}])).values()],...CityPlan.plan.roads.filter(r=>!r.real&&(r.bridge||r.tunnel)&&(!r.pathId||r.pathStart===0)).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';if(l.incident)el.className='incidentLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,l.height??35,l.z)};});}
+    function refreshLabels(){labelsLayer.replaceChildren();labels=[...latestIncidents.filter(i=>!['resolved','averted'].includes(i.status)).map(i=>({name:i.label.toUpperCase()+' · '+i.response,x:i.x,z:i.z,incident:true})),...(CityPlan.layout==='arcade'?CityPlan.landmarks:[]),...CityPlan.highwayGates(),...CityPlan.highwayRamps(),...CityPlan.servicePoints(),...CityPlan.city.filter(b=>b.n&&(['fire','police'].includes(b.k)||(CityPlan.layout==='arcade'?/^(paul revere house|faneuil hall|old state house|museum of science|north station|old west church|the vilna shul|otis house museum|old north church)$/i:/^(paul revere house|faneuil hall|old state house|museum of science|north station|old west church|the vilna shul|otis house museum|old north church|boston city hall|td garden|massachusetts state house|quincy market|uss constitution|the battle of bunker hill museum|suffolk county courthouse|custom house tower)$/i).test(b.n))).map(b=>({name:b.n.replace('Boston Fire Department ','Fire · ').replace('Boston Police Department ','Police · '),x:b.x,z:b.z,height:b.h+12})),...CityPlan.plan.buildings.filter(b=>b.area),...[...new Map(CityPlan.plan.roads.filter(r=>r.real&&r.bridge&&r.name&&r.pathStart===0&&!CityPlan.land({x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2})).map(r=>[r.name,{name:r.name.toUpperCase(),x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true}])).values()],...CityPlan.plan.roads.filter(r=>!r.real&&(r.bridge||r.tunnel)&&(!r.pathId||r.pathStart===0)).map(r=>({name:r.tunnel?'TUNNEL':'OVERPASS',x:(r.a.x+r.b.x)/2,z:(r.a.z+r.b.z)/2,structure:true})),...CityPlan.plan.controls.filter(c=>c.kind!=='signal').map(c=>({name:c.kind==='stop'?'STOP':'▽ YIELD',x:c.x+c.approach.x*20+c.approach.z*7,z:c.z+c.approach.z*20-c.approach.x*7,traffic:true}))].map(l=>{const el=document.createElement('span');el.textContent=l.name||l.label;if(l.traffic)el.className='trafficLabel';if(l.structure)el.className='structureLabel';if(l.incident)el.className='incidentLabel';labelsLayer.append(el);return {el,point:new T.Vector3(l.x,l.height??35,l.z)};});}
     refreshLabels();
     let fog=null;
     function drawFog(){
@@ -306,17 +307,23 @@
     function markingBlocked(road,p){
       return CityPlan.plan.roads.some(other=>other!==road&&!(road.pathId&&other.pathId===road.pathId)&&Math.abs(CityPlan.heightAt(p,road)-CityPlan.heightAt(p,other))<.75&&CityPlan.dist(p,CityPlan.projection(p,other.a,other.b))<CityPlan.roadWidth(other)/2+.65);
     }
-    function drawControls(time){
-      const key=CityPlan.revision+'|'+CityPlan.plan.controls.map(c=>c.kind==='signal'?CityPlan.signalState(c,time,true):c.kind).join('|');
+    // Junction controls: poles, housings and signs are rebuilt only when the controls change; the
+    // signal lamps are one instanced mesh whose colours follow a real-time 40-second cycle (the
+    // same clock the visual traffic obeys). Game time runs too fast for visible lights.
+    let signalLamps=null,signalLampSlots=[],signalPhaseKey='';
+    const lampColors={red:0xf35a43,amber:0xffd468,green:0x7cce84},lampOff=0x3e4944;
+    function drawControls(){
+      const key=CityPlan.revision+'|'+CityPlan.plan.controls.map(c=>c.id+c.kind).join('|');
       if(key===controlsKey)return;
       controlsKey=key;disposeGroup(controlsGroup);
+      if(signalLamps){scene.remove(signalLamps);signalLamps.dispose();signalLamps=null;}
+      signalLampSlots=[];
       for(const control of CityPlan.plan.controls){
         if(control.kind==='signal'){
           for(const [dx,dz,horizontal] of [[10,10,true],[-10,-10,false]]){
             const x=control.x+dx,z=control.z+dz;
             box(x,3,z,.6,6,.6,0x53615b);box(x,6.1,z,2,5.3,1.3,0x263430);
-            const phase=CityPlan.signalState(control,time,horizontal);
-            ['red','amber','green'].forEach((color,i)=>part('round',x,7.7-i*1.65,z+.72,.65,.8,.65,phase===color?{red:0xf35a43,amber:0xffd468,green:0x7cce84}[color]:0x3e4944));
+            ['red','amber','green'].forEach((color,i)=>signalLampSlots.push({x,y:7.7-i*1.65,z:z+.72,color,horizontal}));
           }
         }else{
           const arm=control.approach,flow={x:-arm.x,z:-arm.z},x=control.x+arm.x*20,z=control.z+arm.z*20,angle=-Math.atan2(flow.z,flow.x);
@@ -335,6 +342,21 @@
         }
       }
       controlsGroup=flush();
+      if(signalLampSlots.length){
+        signalLamps=new T.InstancedMesh(geometries.round,material,signalLampSlots.length);
+        const o=new T.Object3D();
+        signalLampSlots.forEach((slot,i)=>{o.position.set(slot.x,slot.y,slot.z);o.rotation.set(0,0,0);o.scale.set(.65,.8,.65);o.updateMatrix();signalLamps.setMatrixAt(i,o.matrix);signalLamps.setColorAt(i,new T.Color(lampOff));});
+        signalLamps.frustumCulled=false;scene.add(signalLamps);
+      }
+      signalPhaseKey='';
+    }
+    function updateSignalLamps(){
+      if(!signalLamps)return false;
+      const minutes=trafficClock/60,h=CityPlan.signalState(null,minutes,true),v=CityPlan.signalState(null,minutes,false),key=h+v;
+      if(key===signalPhaseKey)return false;
+      signalPhaseKey=key;
+      signalLampSlots.forEach((slot,i)=>signalLamps.setColorAt(i,new T.Color((slot.horizontal?h:v)===slot.color?lampColors[slot.color]:lampOff)));
+      signalLamps.instanceColor.needsUpdate=true;return true;
     }
     function bridgeRibbon(road,width,offset,material){
       const length=CityPlan.dist(road.a,road.b),nx=-(road.b.z-road.a.z)/length,nz=(road.b.x-road.a.x)/length,vertices=[];
@@ -397,7 +419,7 @@
           }
         }
       }
-      for(const building of [...CityPlan.plan.buildings,...CityPlan.landmarks.filter(l=>['hall','hospital'].includes(l.site))]){
+      for(const building of [...CityPlan.plan.buildings.filter(b=>!b.anchor),...(CityPlan.layout==='arcade'?CityPlan.landmarks.filter(l=>['hall','hospital'].includes(l.site)):[])]){
         const connection=CityPlan.access(building),s=building.scale||CityPlan.buildingScale(building.type),angle=building.rotation||0;
         const entrance={x:building.x+Math.sin(angle)*(building.radius||s*2.5),z:building.z+Math.cos(angle)*(building.radius||s*2.5)};
         box(entrance.x,1.1,entrance.z,8,.5,8,(connection||building.site)?0xf5d176:0xe98649,angle);
@@ -533,7 +555,14 @@
             part('pine',x+Math.cos(angle)*spread,height/2,z+Math.sin(angle)*spread,3,height,3,i%2?0xffad47:0xea6544);
             part('crown',x+Math.cos(angle)*spread,20+i*2,z+Math.sin(angle)*spread,5,6,5,0x7c7b70);
           }
-        }else if(kind==='protest'){
+        }else if(kind==='traffic'&&incident.status==='active'){
+          // Two crashed cars askew in the street, a hazard triangle and cones.
+          const road=CityPlan.closestRoad({x,z},14)?.road,angle=road?-Math.atan2(road.b.z-road.a.z,road.b.x-road.a.x):0,c=Math.cos(angle),sn=Math.sin(angle);
+          const at=(u,v)=>({x:x+u*c+v*sn,z:z-u*sn+v*c});
+          for(const [u,v,yaw,color] of [[-2.4,.4,.5,0xd87451],[2.2,-.6,-.35,0x729eaa]]){const p=at(u,v);box(p.x,1.25,p.z,4.4,.9,2.1,color,angle+yaw);box(p.x,2,p.z,2.25,.65,1.65,0x344f58,angle+yaw);}
+          for(const u of [-9,9]){const p=at(u,0);part('pine',p.x,1.4,p.z,.55,1.3,.55,0xf08a3c);}
+          const h=at(-6,1.8);part('roof',h.x,1.6,h.z,.9,1.4,.3,0xe2483a,angle);
+
           // Two protester models: marchers holding placards, and pairs carrying a banner.
           // They stand only on open ground (streets, plazas, yards), never inside a building.
           const shirts=[0x7d607c,0x527787,0xb46f53,0x5f8a5a,0xc9a54a];
@@ -560,8 +589,10 @@
       if(lastRevision!==CityPlan.revision||damageKey!==lastDamageKey){
         disposeGroup(buildingMesh);refreshLabels();drawFog();if(fog)fog.position.y=tilt?-158.5:0;
         for(const c of CityPlan.plan.buildings){
-          if(c.area){
-            // Neighbourhood hub: where residents of this area join the road network.
+          if(c.area&&c.anchor){
+            // Real layout: the anchor is a real Boston building, already drawn by the city layer.
+          }else if(c.area){
+            // Old layout neighbourhood hub: where residents of this area join the road network.
             part('round',c.x,.95,c.z,c.radius,.3,c.radius,0xd9c27a);box(c.x,4,c.z,.6,6,.6,0x4a4f4a);box(c.x,6.8,c.z,6,1.8,.3,0xf1d181,-(c.rotation||0));
           }else{origin={...c,damage:damageById[c.id]||0};modelScale=CityPlan.buildingScale(c.type);drawBuilding(c.type,c);origin=null;modelScale=1;}
         }
@@ -597,7 +628,9 @@
         });
         for(const mesh of [people,roofs,wheels]){mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;}
       }
-      if(Number.isFinite(state.minute))trafficMinute=state.minute;drawControls(state.minute||360);drawIncidents(state);
+      if(Number.isFinite(state.minute))trafficMinute=state.minute;
+      trafficIncidents=(state.incidents||[]).filter(i=>i.kind==='traffic'&&i.status==='active');trafficIncidentKey=trafficIncidents.map(i=>i.id).join(',');
+      drawControls();drawIncidents(state);
       guard.material.color.set(state.hallProtected===false?0xe17461:0xf0d275);render();
     }
     const incidentCursor=new T.Mesh(new T.CircleGeometry(1,48),new T.MeshBasicMaterial({color:0xda7658,transparent:true,opacity:.28,side:T.DoubleSide,depthWrite:false}));
@@ -658,53 +691,107 @@
     window.addEventListener('keyup',e=>pressed.delete(e.key.toLowerCase()));
     window.addEventListener('blur',()=>pressed.clear());
     // ---- Visual street traffic ----
-    // Low-poly cars drive the street network (real Boston streets plus player roads and I-93
-    // surface sections): right-hand lanes, one-way directions, turns at intersections, more cars
-    // at rush hour. Visual only, about one car per 18 residents at rush hour; the simulated commuters remain
-    // the source of truth. Updated and drawn only when zoomed in enough to see them.
-    const TRAFFIC_MAX=1600,TRAFFIC_RESIDENTS_PER_CAR=18,TRAFFIC_MIN_ZOOM=1.6,trafficCars=[],trafficColors=[0xd87451,0xe7c16d,0x729eaa,0xb7c9ad,0xe8e4d8,0x3f4a52,0x9b3b34];
-    let trafficGraph=null,trafficRevision=-1,trafficSeed=7,trafficMinute=480,trafficPaused=false,trafficDirty=true,trafficShown=0,lastRender=0;
+    // Low-poly cars drive the street network with a simple car-following model: they keep a gap to
+    // the car ahead, queue at red lights (real OSM signals, real-time 40 s cycle), stop at stop signs,
+    // and wait behind collisions until 911 responders clear them. Right-hand lanes, one-way streets,
+    // turns at intersections, more cars at rush hour (about one car per 18 residents). Visual only:
+    // the simulated commuters drive the score. Updated and drawn only when zoomed in.
+    const TRAFFIC_MAX=1600,TRAFFIC_RESIDENTS_PER_CAR=18,TRAFFIC_MIN_ZOOM=1.6,CAR_SPACE=5.6,trafficCars=[],trafficColors=[0xd87451,0xe7c16d,0x729eaa,0xb7c9ad,0xe8e4d8,0x3f4a52,0x9b3b34];
+    let trafficGraph=null,trafficRevision=-1,trafficSeed=7,trafficMinute=480,trafficPaused=false,trafficDirty=true,trafficShown=0,lastRender=0,trafficClock=0;
+    let trafficIncidents=[],trafficIncidentKey='',trafficBlocks=new Map(),trafficBlocksFor='';
     let trafficBodies=null,trafficRoofs=null,trafficWheels=null;const trafficObject=new T.Object3D();
     const trafficRand=()=>((trafficSeed=Math.imul(trafficSeed,1664525)+1013904223>>>0)/4294967296);
+    const nodeKey=p=>p.x.toFixed(1)+','+p.z.toFixed(1);
+    // Roads closed by a collision stay in the graph (cars queue at the crash); other closures are removed.
+    const crashNear=r=>trafficIncidents.some(i=>CityPlan.dist(CityPlan.projection(i,r.a,r.b),i)<i.radius);
     function buildTrafficGraph(){
-      const nodes=new Map(),edges=[],byKey=new Map(),key=p=>p.x.toFixed(1)+','+p.z.toFixed(1);
+      const nodes=new Map(),edges=[],byKey=new Map(),signals=new Map(),stops=new Map();
       for(const r of CityPlan.plan.roads){
-        if(r.tunnel||CityPlan.roadBlocked(r))continue;
+        if(r.tunnel||(CityPlan.roadBlocked(r)&&!crashNear(r)))continue;
         const len=CityPlan.dist(r.a,r.b);if(len<1)continue;
         const oneway=r.type==='oneway'||!!r.oneway;
-        const add=(a,b,forward)=>{const e={from:key(a),to:key(b),a,b,len,road:r,oneway,width:CityPlan.roadWidth(r),dir:{x:(b.x-a.x)/len,z:(b.z-a.z)/len}};edges.push(e);if(!nodes.has(e.from))nodes.set(e.from,[]);nodes.get(e.from).push(e);byKey.set(r.id+(forward?'>':'<'),e);};
+        const add=(a,b,forward)=>{const e={id:edges.length,from:nodeKey(a),to:nodeKey(b),a,b,len,road:r,oneway,width:CityPlan.roadWidth(r),dir:{x:(b.x-a.x)/len,z:(b.z-a.z)/len}};edges.push(e);if(!nodes.has(e.from))nodes.set(e.from,[]);nodes.get(e.from).push(e);byKey.set(r.id+(forward?'>':'<'),e);};
         add(r.a,r.b,true);if(!oneway)add(r.b,r.a,false);
       }
-      return {nodes,edges,byKey,total:edges.reduce((sum,e)=>sum+e.len,0)};
+      for(const c of CityPlan.plan.controls){const k=nodeKey(c);if(c.kind==='signal')signals.set(k,c);else{if(!stops.has(k))stops.set(k,[]);stops.get(k).push(c);}}
+      return {nodes,edges,byKey,signals,stops,total:edges.reduce((sum,e)=>sum+e.len,0)};
+    }
+    function computeTrafficBlocks(){
+      trafficBlocks=new Map();
+      for(const i of trafficIncidents)for(const e of trafficGraph.edges){const q=CityPlan.projection(i,e.a,e.b);if(CityPlan.dist(q,i)<i.radius){const s=Math.max(0,q.t*e.len-i.radius*.6);if(!trafficBlocks.has(e)||s<trafficBlocks.get(e))trafficBlocks.set(e,s);}}
     }
     function pickTrafficEdge(){let t=trafficRand()*trafficGraph.total;for(const e of trafficGraph.edges){t-=e.len;if(t<=0)return e;}return trafficGraph.edges[0];}
     function nextTrafficEdge(car){
-      const options=trafficGraph.nodes.get(car.edge.to)||[],forward=options.filter(e=>e.to!==car.edge.from),list=forward.length?forward:options;
+      // Drivers do not know about a crash until they are on that street, so they can end up queued behind it.
+      const options=trafficGraph.nodes.get(car.edge.to)||[],forward=options.filter(e=>e.to!==car.edge.from);
+      const list=forward.length?forward:options;
       if(!list.length)return null;
       let total=0;const weights=list.map(e=>{const w=1.25+e.dir.x*car.edge.dir.x+e.dir.z*car.edge.dir.z;total+=w;return w;});
       let t=trafficRand()*total;for(let i=0;i<list.length;i++){t-=weights[i];if(t<=0)return list[i];}return list[list.length-1];
     }
-    function spawnTrafficCar(){const edge=pickTrafficEdge();return {edge,s:trafficRand()*edge.len,speed:7+trafficRand()*6,lane:trafficRand()<.5?-1:1,color:trafficColors[Math.floor(trafficRand()*trafficColors.length)]};}
+    const laneOf=(edge,car)=>edge.id*2+(edge.oneway&&edge.width>7&&car.lane>0?1:0);
+    function spawnTrafficCar(lanes){
+      for(let attempt=0;attempt<6;attempt++){
+        const edge=pickTrafficEdge(),car={edge,s:trafficRand()*edge.len,v:0,v0:7+trafficRand()*6,lane:trafficRand()<.5?-1:1,color:trafficColors[Math.floor(trafficRand()*trafficColors.length)],next:null,stuck:0};
+        if(trafficBlocks.has(edge))continue;
+        const list=lanes.get(laneOf(edge,car))||[];if(list.some(o=>Math.abs(o.s-car.s)<CAR_SPACE*1.5))continue;
+        return car;
+      }
+      return null;
+    }
     function trafficDensity(minute){const h=minute/60,peak=(c,w)=>Math.exp(-((h-c)*(h-c))/(2*w*w));return Math.min(1,.18+.82*Math.max(peak(8,1.1),peak(17.5,1.3))+.25*peak(12.5,2));}
+    function moveTraffic(dt,lanes){
+      // Rear-most position of each lane, used to keep a gap across junctions.
+      const tail=k=>{const l=lanes.get(k);return l&&l.length?l[l.length-1].s:Infinity;};
+      const respawn=[];
+      for(const list of lanes.values()){
+        let leader=null;
+        for(const car of list){
+          let e=car.edge;
+          if(car.next===null)car.next=nextTrafficEdge(car);
+          let stopAt=Infinity;
+          const block=trafficBlocks.get(e);if(block!==undefined&&block>car.s-1)stopAt=block-1;
+          const signal=trafficGraph.signals.get(e.to);
+          if(signal){const st=CityPlan.signalState(signal,trafficClock/60,Math.abs(e.dir.x)>=Math.abs(e.dir.z));if(st!=='green'&&car.s<e.len-6)stopAt=Math.min(stopAt,e.len-7);}
+          else if(!car.stopDone){const stop=(trafficGraph.stops.get(e.to)||[]).find(c=>-(c.approach.x*e.dir.x+c.approach.z*e.dir.z)>.8);if(stop){if(car.s>=e.len-9&&car.v<.4)car.stopTimer=(car.stopTimer||0)+dt;if(car.stopTimer>1.5)car.stopDone=true;else stopAt=Math.min(stopAt,e.len-7.5);}}
+          if(!car.next)stopAt=Math.min(stopAt,e.len-2);
+          else{const t=tail(laneOf(car.next,car));if(t<CAR_SPACE+1)stopAt=Math.min(stopAt,e.len-(CAR_SPACE+1-t));}
+          const gap=Math.min(leader?leader.s-car.s-CAR_SPACE:Infinity,stopAt-car.s);
+          const desired=Math.max(0,Math.min(car.v0,(gap-1)/1.1));
+          car.v=Math.max(0,car.v+Math.max(-7*dt,Math.min(2.5*dt,desired-car.v)));
+          car.s+=Math.min(car.v*dt,Math.max(0,gap-.2));
+          const startEdge=e;
+          while(car.s>e.len&&car.next){car.s-=e.len;car.edge=car.next;car.next=null;car.stopDone=false;car.stopTimer=0;e=car.edge;const k=laneOf(e,car);if(!lanes.has(k))lanes.set(k,[]);lanes.get(k).push(car);}
+          if(car.s>e.len)car.s=e.len;
+          // A car stuck for a long time not behind a crash (dead end, gridlock) is recycled.
+          car.stuck=car.v<.1&&!trafficBlocks.has(e)?car.stuck+dt:0;if(car.stuck>45)respawn.push(car);
+          leader=car.edge===startEdge?car:null;
+        }
+      }
+      return respawn;
+    }
     function trafficTick(dt){
       if(CityPlan.revision!==trafficRevision){
-        trafficGraph=buildTrafficGraph();trafficRevision=CityPlan.revision;trafficDirty=true;
-        for(let i=trafficCars.length-1;i>=0;i--){const c=trafficCars[i],e=trafficGraph.byKey.get(c.edge.road.id+(c.edge.a===c.edge.road.a?'>':'<'));if(e)c.edge=e;else trafficCars.splice(i,1);}
+        trafficGraph=buildTrafficGraph();trafficRevision=CityPlan.revision;trafficDirty=true;trafficBlocksFor='';
+        for(let i=trafficCars.length-1;i>=0;i--){const c=trafficCars[i],e=trafficGraph.byKey.get(c.edge.road.id+(c.edge.a===c.edge.road.a?'>':'<'));if(e){c.edge=e;c.next=null;}else trafficCars.splice(i,1);}
       }
+      if(trafficBlocksFor!==trafficIncidentKey+'|'+trafficRevision){computeTrafficBlocks();trafficBlocksFor=trafficIncidentKey+'|'+trafficRevision;for(const c of trafficCars)c.next=null;}
+      const lanes=new Map();
+      for(const car of trafficCars){const k=laneOf(car.edge,car);if(!lanes.has(k))lanes.set(k,[]);lanes.get(k).push(car);}
+      for(const list of lanes.values())list.sort((a,b)=>b.s-a.s);
       const target=trafficGraph.edges.length?Math.round(Math.min(TRAFFIC_MAX,CityPlan.cityPopulation()/TRAFFIC_RESIDENTS_PER_CAR)*trafficDensity(trafficMinute)):0;
-      while(trafficCars.length<target){trafficCars.push(spawnTrafficCar());trafficDirty=true;}
+      for(let added=0;trafficCars.length<target&&added<40;added++){const car=spawnTrafficCar(lanes);if(!car)break;trafficCars.push(car);const k=laneOf(car.edge,car);if(!lanes.has(k))lanes.set(k,[]);lanes.get(k).push(car);lanes.get(k).sort((a,b)=>b.s-a.s);trafficDirty=true;}
       if(trafficCars.length>target){trafficCars.length=target;trafficDirty=true;}
       if(!trafficBodies){
         trafficBodies=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX);trafficRoofs=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX);trafficWheels=new T.InstancedMesh(geometries.box,material,TRAFFIC_MAX*4);
         for(const m of [trafficBodies,trafficRoofs,trafficWheels]){m.frustumCulled=false;m.count=0;scene.add(m);}
         for(let i=0;i<TRAFFIC_MAX;i++){trafficRoofs.setColorAt(i,new T.Color(0x344f58));for(let j=0;j<4;j++)trafficWheels.setColorAt(i*4+j,new T.Color(0x263330));}
       }
-      const visible=scale>=TRAFFIC_MIN_ZOOM;
+      const visible=scale>=TRAFFIC_MIN_ZOOM,moving=!trafficPaused&&dt>0;
+      if(moving){trafficClock+=dt;for(const car of moveTraffic(dt,lanes)){const fresh=spawnTrafficCar(lanes);if(fresh)Object.assign(car,fresh);}}
       if(!visible){if(trafficShown){trafficBodies.count=trafficRoofs.count=trafficWheels.count=0;trafficShown=0;return true;}return false;}
-      const moving=!trafficPaused&&dt>0;
       if(!moving&&!trafficDirty&&trafficShown===trafficCars.length)return false;
       trafficCars.forEach((car,i)=>{
-        if(moving){car.s+=car.speed*dt;while(car.s>car.edge.len){car.s-=car.edge.len;const next=nextTrafficEdge(car);if(!next){Object.assign(car,spawnTrafficCar());break;}car.edge=next;}}
         const e=car.edge,d=e.dir,offset=e.oneway?(e.width>7?car.lane*e.width/4:0):e.width/4;
         const p={x:e.a.x+d.x*car.s,z:e.a.z+d.z*car.s},x=p.x-d.z*offset,z=p.z+d.x*offset,ground=e.road.bridge||e.road.fixed?CityPlan.heightAt(p,e.road):0,heading=Math.atan2(d.x,d.z);
         trafficObject.position.set(x,ground+1.25,z);trafficObject.rotation.set(0,heading,0);trafficObject.scale.set(2.1,.9,4.4);trafficObject.updateMatrix();trafficBodies.setMatrixAt(i,trafficObject.matrix);
@@ -720,7 +807,8 @@
     function cameraLoop(now){
       const elapsed=Math.min(.1,(now-cameraFrame)/1000);cameraFrame=now;
       // Traffic moves in real time; render here only if update() has not just rendered this frame.
-      if(trafficTick(elapsed)&&now-lastRender>12)render();
+      const lampsChanged=updateSignalLamps();
+      if((trafficTick(elapsed)||lampsChanged)&&now-lastRender>12)render();
       if(pressed.size){
         const rate=450*elapsed/scale,dx=(Number(pressed.has('d'))-Number(pressed.has('a')))*rate,dz=(Number(pressed.has('s'))-Number(pressed.has('w')))*rate;
         pan.x+=dx*Math.cos(azimuth)+dz*Math.sin(azimuth);pan.z+=-dx*Math.sin(azimuth)+dz*Math.cos(azimuth);

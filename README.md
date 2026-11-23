@@ -28,7 +28,9 @@ The map is the real Boston area of the reference screenshot at 1:1 (no levels): 
 
 The map opens in a 3D view. Zoom in for more detail (porches, cornices, windows); zoom out to see the whole area. Editing only works in the top-down view: choosing a road, building or bulldoze tool switches to it, and the button under the map toggles between "Top-down (edit)" and "3D view".
 
-Seven gold hubs mark the neighbourhoods (Beacon Hill, North End, Charlestown, West End, Financial District, Government Center, Waterfront). Connect homes and offices along the real street gaps, run a day, and get every resident to work and home. Completion also requires every placed site to have road access and every incident to be closed.
+Real Boston streets come from OpenStreetMap and can be bulldozed, upgraded or restored (City tab: Restore real Boston streets). Cars drive them when you zoom in (visual traffic, about one car per 18 residents at rush hour). Seven neighbourhoods (Beacon Hill, North End, Charlestown, West End, Financial District, Government Center, Waterfront) are anchored to real buildings whose residents and workers the simulation follows. Run a day and get every resident to work and home; completion also requires every placed site to have road access and every incident to be closed.
+
+The City tab's **Map layout** switch chooses *Real Boston* (default) or the *Old arcade layout* (gold neighbourhood pads, hand-placed landmark circles). Old level saves are offered through **Import old level save** instead of loading automatically.
 
 The Buildings tab restores player placement alongside the fixed Boston areas. Place residences, offices, shops, social venues, parks and parking freely on unlocked dry land. R or Rotate changes orientation by 45 degrees. Face the entrance toward a road and keep the driveway within 20 meters of the curb. Each type has a limited player inventory. Fixed neighborhood clusters do not consume that inventory.
 
