@@ -93,9 +93,10 @@ window.CitySim = (() => {
     // autonomous residents. The game owns the physical city and falls back if it is offline.
     const ENGINE=config.engine||'http://127.0.0.1:8787';
     const mayorBackend=['baseline','local','api'].includes(config.mayorBackend)?config.mayorBackend:'baseline';
-    const mayorLabel={baseline:'Rule-based mayor',local:'Qwen 3 · 8B',api:'Claude API mayor'}[mayorBackend];
+    // Model names come from the engine (config/engine.yaml); the game never picks a model itself.
+    const mayorLabel={baseline:'Rule-based mayor',local:'Local mayor · '+(config.mayorModelName||'engine model'),api:'Claude API mayor'}[mayorBackend];
     const autonomy=clamp(Number(config.autonomy)||0,0,100);
-    const residentModel=config.residentModel||'qwen3:1.7b';
+    const residentModel=config.residentModelName||'engine resident model';
     const hall = window.CITY_HALL || {x:0, z:0, radius:12};
     const hospital = window.CITY_HOSPITAL || {x:-20,z:0};
     let sites = window.CITY_LOTS.map(l => ({...l, type:lots[l.id]}));
@@ -311,7 +312,7 @@ window.CitySim = (() => {
       pending = true;
       mayorMode = mayorLabel+' deciding';
       try {
-        const decision = await post('/api/brain/mayor',{backend:mayorBackend,model:config.mayorModel,prompt,allowed,fallback});
+        const decision = await post('/api/brain/mayor',{backend:mayorBackend,prompt,allowed,fallback});
         engineOnline = true;
         if (!disposed) {
           mayorMode = decision.fallback_used ? mayorLabel+' · fallback ('+String(decision.error||'model error').slice(0,40)+')' : mayorLabel;
@@ -384,7 +385,7 @@ window.CitySim = (() => {
       const context={time:Math.floor(minute/60)+':'+String(minute%60).padStart(2,'0'),satisfaction:score,
         policePresence:minute<patrolUntil?'high':'low',activeIncidents:incidentSystem.active().map(i=>i.label+' in '+i.district),crimesToday:crimes};
       residentsPending=true;
-      post('/api/brain/residents',{model:residentModel,residents:residentsObs,context})
+      post('/api/brain/residents',{residents:residentsObs,context})
         .then(data=>{engineOnline=true;if(!disposed&&!ended)(data.decisions||[]).forEach(applyResident);})
         .catch(()=>{engineOnline=false;})
         .finally(()=>{residentsPending=false;});

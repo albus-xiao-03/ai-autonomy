@@ -184,6 +184,10 @@
   let engineInfo=null;
   async function pollEngine(){
     try{const r=await fetch('http://127.0.0.1:8787/api/brain/status');engineInfo=await r.json();}catch{engineInfo=null;}
+    // Show the models the engine is configured with (the teammate's engine owns model choice).
+    const localOption=[...$('mayorBrain').options].find(o=>o.value==='local');if(localOption)localOption.textContent='Local mayor · '+(engineInfo?.mayor_local_model||'engine model');
+    $('mixHelp').textContent='Routine ← → think for themselves ('+(engineInfo?.resident_model||'engine resident model')+')';
+    if(!sim)render();
     $('engineStatus').textContent=engineInfo?'Engine online · Ollama '+(engineInfo.ollama?'ready':'offline')+(engineInfo.api_available?' · cloud API enabled':' · cloud API off'):'Engine offline · civic controller fallback';
   }
   pollEngine();setInterval(pollEngine,5000);
@@ -281,7 +285,7 @@
     const allConnected=CityPlan.plan.buildings.every(b=>CityPlan.access(b));
     const complete=!!s?.finished&&s.workersArrived===s.population&&s.atHome===s.population&&allConnected&&!(s.incidents||[]).some(i=>i.status!=='resolved');
         $('levelGoal').textContent=complete?'Day objective complete: every resident commuted home and every incident is closed.':'Connect homes and offices. Keep residents safe and restore roads after incidents.';
-    $('engine').textContent=s?.mayorMode || ({local:'Qwen 3 · 8B',baseline:'Rule-based mayor',api:'Claude API mayor'}[settings]);
+    $('engine').textContent=s?.mayorMode || ({local:'Local mayor · '+(engineInfo?.mayor_local_model||'engine model'),baseline:'Rule-based mayor',api:'Claude API mayor'}[settings]);
     $('mixValue').textContent=$('autonomy').value+'%';$('autonomy').disabled=!!s&&!s.finished;$('mayorBrain').disabled=!!s&&!s.finished;
     $('crimes').textContent=s?s.crimes:0;drawScore(s);
     if(s?.residentThoughts?.length){$('residentThoughts').replaceChildren(...s.residentThoughts.slice(-5).reverse().map(t=>{const row=document.createElement('div');row.className='thoughtRow'+(['speeding','vandalism','road_blockade'].includes(t.action)?' crime':'');const b=document.createElement('b');b.textContent='#'+t.id+' · '+t.action.replace('_',' ')+' · '+time(t.minute);const p=document.createElement('div');p.textContent='“'+t.thought+'”';row.append(b,p);return row;}));}
@@ -325,7 +329,7 @@
     if(!CityPlan.plan.roads.length){notice('Draw roads to connect your homes and workplaces.');return;}
     if(!homes.some(h=>offices.some(o=>CityPlan.route(h,o)&&CityPlan.route(o,h)))){notice('Connect at least one residential area to an office area with a route in both directions.');return;}
     roadStart=curveControl=null;world.ghost(null);
-    sim?.dispose();scoreHistory=[];sim=CitySim.start(lots,{engine:'http://127.0.0.1:8787',mayorBackend:settings,autonomy:Number($('autonomy').value),residentModel:'qwen3:1.7b',autoIncidents:$('autoIncidents').checked});
+    sim?.dispose();scoreHistory=[];sim=CitySim.start(lots,{engine:'http://127.0.0.1:8787',mayorBackend:settings,autonomy:Number($('autonomy').value),mayorModelName:engineInfo?.mayor_local_model,residentModelName:engineInfo?.resident_model,autoIncidents:$('autoIncidents').checked});
     paused=false;selection=null;drawPalette();notice('The city is running. Watch the mayor’s orders and their outcomes.');render();
   }
   $('run').onclick=()=>{if(!sim||sim.getState().finished)start();else{paused=!paused;render();}};
@@ -348,8 +352,8 @@
   syncViewButton();
   $('settings').onclick=()=>{
     const body=dialog('Mayor settings'),label=document.createElement('label');label.textContent='Decision engine ';const select=document.createElement('select');
-    select.add(new Option('Qwen 3 · 8B (local Ollama)','local'));select.add(new Option('Rule-based (no model)','baseline'));select.add(new Option('Claude API (cloud)','api'));select.value=settings;label.append(select);body.append(label);
-    const p=document.createElement('p');p.className='muted';p.textContent='Changes apply on the next run. Decisions come from the Python engine (uv run aia serve, port 8787). Qwen uses qwen3:8b via local Ollama. The Claude API needs AIA_ALLOW_PAID_API=1 and ANTHROPIC_API_KEY set where the engine runs. If the engine is offline, the civic controller takes over.';body.append(p);
+    select.add(new Option('Local mayor · '+(engineInfo?.mayor_local_model||'engine model')+' (Ollama)','local'));select.add(new Option('Rule-based (no model)','baseline'));select.add(new Option('Claude API (cloud)','api'));select.value=settings;label.append(select);body.append(label);
+    const p=document.createElement('p');p.className='muted';p.textContent='Changes apply on the next run. Decisions come from the Python engine (uv run aia serve, port 8787), which chooses the models from config/engine.yaml (local mayor: '+(engineInfo?.mayor_local_model||'engine offline')+'; residents: '+(engineInfo?.resident_model||'engine offline')+'). The Claude API needs AIA_ALLOW_PAID_API=1 and ANTHROPIC_API_KEY set where the engine runs. If the engine is offline, the civic controller takes over.';body.append(p);
     if(sim){const info=document.createElement('p');info.textContent='Current engine · '+sim.getState().mayorMode;body.append(info);}
     select.onchange=()=>{settings=select.value;$('mayorBrain').value=settings;try{localStorage.setItem('borough-mayor',settings);}catch{}render();};
   };
