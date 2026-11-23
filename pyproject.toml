@@ -76,6 +76,8 @@ no_implicit_optional = true
 # global-only in mypy, so the strict flag set is spelled out per module.
 [[tool.mypy.overrides]]
 module = [
+    "aiautonomy.engines.contract",
+    "aiautonomy.engines.contract.*",
     "aiautonomy.engines.core",
     "aiautonomy.engines.core.*",
     "aiautonomy.engines.finance",
@@ -115,6 +117,14 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.importlinter]
 root_package = "aiautonomy"
+include_external_packages = true
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+name = "resident inference stays local: no paid API client, no mayor backends (LOCAL-06)"
+type = "forbidden"
+source_modules = ["aiautonomy.engines.residents", "aiautonomy.engines.hybrid.resident_desk"]
+forbidden_modules = ["anthropic", "aiautonomy.engines.mayor"]
 
 [[tool.importlinter.contracts]]
 name = "core imports no other aiautonomy.engines package"
@@ -126,9 +136,11 @@ forbidden_modules = [
     "aiautonomy.engines.bench",
     "aiautonomy.engines.build",
     "aiautonomy.engines.cli",
+    "aiautonomy.engines.contract",
     "aiautonomy.engines.events",
     "aiautonomy.engines.finance",
     "aiautonomy.engines.host",
+    "aiautonomy.engines.hybrid",
     "aiautonomy.engines.mayor",
     "aiautonomy.engines.metrics",
     "aiautonomy.engines.politics",
@@ -148,7 +160,9 @@ layers = [
     "aiautonomy.engines.cli",
     "aiautonomy.engines.api",
     "aiautonomy.engines.record",
+    "aiautonomy.engines.hybrid",
     "aiautonomy.engines.sim",
     "aiautonomy.engines.world",
+    "aiautonomy.engines.contract",
     "aiautonomy.engines.core",
 ]

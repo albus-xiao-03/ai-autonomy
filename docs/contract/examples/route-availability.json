@@ -1,0 +1,93 @@
+{
+  "description": "Tick 75: a flood (inc-000002) closed the low roads between the fire station and Beacon Hill, so the game reports both fire units as unreachable; police and ambulances still have routes.",
+  "examples": [
+    {
+      "type": "TickObservation",
+      "value": {
+        "run_epoch": 1,
+        "tick": 75,
+        "satisfaction": 79.0,
+        "incidents": [
+          {
+            "id": "inc-000002",
+            "kind": "flood",
+            "severity": 65,
+            "opened_tick": 75,
+            "status": "active",
+            "x": -230.0,
+            "z": 600.0,
+            "district": "Downtown",
+            "disruption_id": "dis-000002"
+          }
+        ],
+        "routes": [
+          {
+            "unit_id": "ems-mgh-1",
+            "incident_id": "inc-000002",
+            "reachable": true,
+            "travel_ticks": 4
+          },
+          {
+            "unit_id": "ems-mgh-2",
+            "incident_id": "inc-000002",
+            "reachable": true,
+            "travel_ticks": 4
+          },
+          {
+            "unit_id": "fd-e4-engine",
+            "incident_id": "inc-000002",
+            "reachable": false,
+            "travel_ticks": null
+          },
+          {
+            "unit_id": "fd-e4-ladder",
+            "incident_id": "inc-000002",
+            "reachable": false,
+            "travel_ticks": null
+          },
+          {
+            "unit_id": "pd-a1-1",
+            "incident_id": "inc-000002",
+            "reachable": true,
+            "travel_ticks": 5
+          },
+          {
+            "unit_id": "pd-a1-2",
+            "incident_id": "inc-000002",
+            "reachable": true,
+            "travel_ticks": 5
+          }
+        ],
+        "unit_events": [],
+        "out_of_service": [],
+        "residents_joined": [],
+        "resident_moods": [
+          {
+            "id": 0,
+            "mood": 79.0
+          },
+          {
+            "id": 1,
+            "mood": 79.0
+          },
+          {
+            "id": 2,
+            "mood": 79.0
+          },
+          {
+            "id": 3,
+            "mood": 79.0
+          },
+          {
+            "id": 4,
+            "mood": 79.0
+          },
+          {
+            "id": 5,
+            "mood": 79.0
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "description": "Tick 42: the game reports the gas leak the engine scheduled (dis-000001, spawned with incident id inc-000001) and the travel time from every available unit to it.",
+  "examples": [
+    {
+      "type": "TickObservation",
+      "value": {
+        "run_epoch": 1,
+        "tick": 42,
+        "satisfaction": 81.0,
+        "incidents": [
+          {
+            "id": "inc-000001",
+            "kind": "gas_leakage",
+            "severity": 54,
+            "opened_tick": 42,
+            "status": "active",
+            "x": 360.0,
+            "z": 560.0,
+            "district": "Downtown",
+            "disruption_id": "dis-000001"
+          }
+        ],
+        "routes": [
+          {
+            "unit_id": "ems-mgh-1",
+            "incident_id": "inc-000001",
+            "reachable": true,
+            "travel_ticks": 6
+          },
+          {
+            "unit_id": "ems-mgh-2",
+            "incident_id": "inc-000001",
+            "reachable": true,
+            "travel_ticks": 6
+          },
+          {
+            "unit_id": "fd-e4-engine",
+            "incident_id": "inc-000001",
+            "reachable": true,
+            "travel_ticks": 4
+          },
+          {
+            "unit_id": "fd-e4-ladder",
+            "incident_id": "inc-000001",
+            "reachable": true,
+            "travel_ticks": 4
+          },
+          {
+            "unit_id": "pd-a1-1",
+            "incident_id": "inc-000001",
+            "reachable": true,
+            "travel_ticks": 3
+          },
+          {
+            "unit_id": "pd-a1-2",
+            "incident_id": "inc-000001",
+            "reachable": true,
+            "travel_ticks": 3
+          }
+        ],
+        "unit_events": [],
+        "out_of_service": [],
+        "residents_joined": [],
+        "resident_moods": null
+      }
+    }
+  ]
+}

@@ -20,6 +20,35 @@ from pydantic.json_schema import GenerateJsonSchema, JsonSchemaValue
 from pydantic_core import core_schema
 
 from aiautonomy.engines.api.protocol import ClientMessage, HealthResponse, ServerMessage
+from aiautonomy.engines.contract.common import ErrorResponse
+from aiautonomy.engines.contract.decisions import (
+    MayorDecisionRecord,
+    OrderRecord,
+    ResidentDecisionAccepted,
+    ResidentDecisionRequest,
+)
+from aiautonomy.engines.contract.dispatch import IncidentCatalogView
+from aiautonomy.engines.contract.disruptions import (
+    DisruptionCatalogView,
+    DisruptionInjectRequest,
+    DisruptionInjectResponse,
+)
+from aiautonomy.engines.contract.maps import (
+    MapCreateRequest,
+    MapList,
+    MapRevision,
+    MapRevisionRequest,
+    MapValidateRequest,
+    MapValidationReport,
+)
+from aiautonomy.engines.contract.runs import (
+    EpochRequest,
+    RunHandle,
+    RunLaunchRequest,
+    RunSummary,
+    TickObservation,
+    TickOutcome,
+)
 
 SCHEMA_TITLE = "AiaProtocol"
 JSON_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
@@ -55,6 +84,28 @@ def build_schema() -> dict[str, Any]:
         ("server_message", TypeAdapter(ServerMessage)),
         ("client_message", TypeAdapter(ClientMessage)),
         ("health", TypeAdapter(HealthResponse)),
+        # Hybrid REST contract (docs/contract.md).
+        ("map_list", TypeAdapter(MapList)),
+        ("map_revision", TypeAdapter(MapRevision)),
+        ("map_create_request", TypeAdapter(MapCreateRequest)),
+        ("map_revision_request", TypeAdapter(MapRevisionRequest)),
+        ("map_validate_request", TypeAdapter(MapValidateRequest)),
+        ("map_validation_report", TypeAdapter(MapValidationReport)),
+        ("run_launch_request", TypeAdapter(RunLaunchRequest)),
+        ("run_handle", TypeAdapter(RunHandle)),
+        ("epoch_request", TypeAdapter(EpochRequest)),
+        ("run_summary", TypeAdapter(RunSummary)),
+        ("tick_observation", TypeAdapter(TickObservation)),
+        ("tick_outcome", TypeAdapter(TickOutcome)),
+        ("disruption_inject_request", TypeAdapter(DisruptionInjectRequest)),
+        ("disruption_inject_response", TypeAdapter(DisruptionInjectResponse)),
+        ("disruption_catalog", TypeAdapter(DisruptionCatalogView)),
+        ("incident_catalog", TypeAdapter(IncidentCatalogView)),
+        ("resident_decision_request", TypeAdapter(ResidentDecisionRequest)),
+        ("resident_decision_accepted", TypeAdapter(ResidentDecisionAccepted)),
+        ("mayor_decision_record", TypeAdapter(MayorDecisionRecord)),
+        ("order_record", TypeAdapter(OrderRecord)),
+        ("error_response", TypeAdapter(ErrorResponse)),
     ]
     refs, top = TypeAdapter.json_schemas(
         [(name, "validation", adapter) for name, adapter in roots],
@@ -73,8 +124,10 @@ def build_schema() -> dict[str, Any]:
         "title": SCHEMA_TITLE,
         "description": (
             "AI Autonomy engine-frontend protocol (docs/engine-plan.md §4.8). One WebSocket at /ws "
-            "carries JSON text frames discriminated by `type`. Generated from "
-            "aiautonomy.engines.api.protocol; do not edit."
+            "carries JSON text frames discriminated by `type`. The hybrid game contract "
+            "(docs/contract.md) adds the REST bodies under /api/maps, /api/runs and "
+            "/api/catalogs. Generated from aiautonomy.engines.api.protocol and "
+            "aiautonomy.engines.contract; do not edit."
         ),
         "type": "object",
         "additionalProperties": False,

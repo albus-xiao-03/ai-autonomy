@@ -8,7 +8,7 @@ TypeScript frontend lives in `aiautonomy/interfaces/`.
 | Spec component | Package | State in M0 |
 |---|---|---|
 | Three.js frontend | `aiautonomy/interfaces/` | Shell, playback panel |
-| Simulation engine | `aiautonomy.engines.sim` (clock, phases, driver, termination), `aiautonomy.engines.world` (World state, toy world), `aiautonomy.engines.traffic`, `aiautonomy.engines.services`, `aiautonomy.engines.build`, `aiautonomy.engines.finance`, `aiautonomy.engines.residents`, `aiautonomy.engines.politics`, `aiautonomy.engines.host`, `aiautonomy.engines.metrics` | Tick pipeline, toy world and toy metrics |
+| Simulation engine | `aiautonomy.engines.sim` (clock, phases, driver, termination), `aiautonomy.engines.world` (World state, toy world, Boston map catalog, validation, locks and store), `aiautonomy.engines.traffic`, `aiautonomy.engines.services`, `aiautonomy.engines.build`, `aiautonomy.engines.finance`, `aiautonomy.engines.residents`, `aiautonomy.engines.politics`, `aiautonomy.engines.host`, `aiautonomy.engines.metrics` | Tick pipeline, toy world and toy metrics |
 | Action validator | `aiautonomy.engines.mayor` (validator, commit) | Placeholder (M5) |
 | Agent scheduler | `aiautonomy.engines.agents` (scheduler) | Inference-client registry used by replay |
 | Local resident adapter | `aiautonomy.engines.agents` (resident adapter) | Placeholder (M4) |
@@ -18,12 +18,15 @@ TypeScript frontend lives in `aiautonomy/interfaces/`.
 
 Supporting packages: `aiautonomy.engines.core` (ids, keyed RNG, canonical JSON and hashes,
 integer money, data-file loader, version stamp; imports no other engine package),
+`aiautonomy.engines.contract` (pydantic models of the hybrid engine–game contract,
+docs/contract.md; imports only `core`), `aiautonomy.engines.hybrid` (hybrid Boston runs driven by
+the game: run store, tick pipeline, engine state, seeded resident modes),
 `aiautonomy.engines.api` (FastAPI app, WebSocket session, protocol models and schema export),
 `aiautonomy.engines.bench` (M4, M9), `aiautonomy.engines.cli` (`aia`) and
 `aiautonomy.engines.trace` (`aia trace`).
 
-Import layering, enforced by import-linter: `cli` → `api` → `record` → `sim` → `world` →
-`core`.
+Import layering, enforced by import-linter: `cli` → `api` → `record` → `hybrid` → `sim` →
+`world` → `contract` → `core`.
 
 ## Runtime topology
 

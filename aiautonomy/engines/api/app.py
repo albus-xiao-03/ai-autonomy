@@ -18,11 +18,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from aiautonomy.engines.api.brain import router as brain_router
+from aiautonomy.engines.api.catalogs import router as catalogs_router
+from aiautonomy.engines.api.errors import install_error_handlers
+from aiautonomy.engines.api.maps import router as maps_router
 from aiautonomy.engines.api.protocol import HealthResponse
+from aiautonomy.engines.api.runs import router as runs_router
 from aiautonomy.engines.api.session import EngineSession, QueueClient, SessionOptions
-from aiautonomy.engines.core.paths import repo_root
+from aiautonomy.engines.core.paths import maps_dir, repo_root
 from aiautonomy.engines.core.version import engine_version, package_version
-from aiautonomy.engines.record.recorder import relabel_stale_runs
+from aiautonomy.engines.hybrid.store import RunStore
+from aiautonomy.engines.record.hybrid import HybridRecorder
+from aiautonomy.engines.record.recorder import make_run_id, relabel_stale_runs
+from aiautonomy.engines.world.map_store import MapStore
+from aiautonomy.engines.world.maps import canonical_catalog
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +54,16 @@ def frontend_dist(root: Path | None = None) -> Path | None:
     return dist if (dist / "index.html").is_file() else None
 
 
+def build_map_store(options: SessionOptions) -> MapStore:
+    """Shipped revisions under `<root>/data/maps`, user saves under the maps directory."""
+    root = options.root or repo_root()
+    return MapStore(
+        root / "data" / "maps",
+        options.maps_dir or maps_dir(),
+        canonical_catalog(root).catalog,
+    )
+
+
 def create_app(options: SessionOptions, *, serve_frontend: bool = True) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -54,9 +72,18 @@ def create_app(options: SessionOptions, *, serve_frontend: bool = True) -> FastA
             log.warning("relabelled %d stale run(s) as interrupted", len(relabelled))
         session = EngineSession(options)
         app.state.session = session
+        app.state.root = options.root or repo_root()
+        app.state.maps = build_map_store(options)
+        app.state.runs = RunStore(
+            app.state.maps,
+            options.root or repo_root(),
+            new_run_id=make_run_id,
+            sinks=lambda: [HybridRecorder(options.runs_dir)],
+        )
         try:
             yield
         finally:
+            app.state.runs.shutdown()
             session.shutdown()
 
     app = FastAPI(
@@ -74,7 +101,11 @@ def create_app(options: SessionOptions, *, serve_frontend: bool = True) -> FastA
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
+    install_error_handlers(app)
     app.include_router(brain_router)
+    app.include_router(maps_router)
+    app.include_router(runs_router)
+    app.include_router(catalogs_router)
 
     @app.get("/api/health")
     async def health() -> HealthResponse:

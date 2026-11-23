@@ -41,3 +41,27 @@ Checked after phase 7, or after phase 3 when a removal succeeded there:
 `pause` and `set_speed` take effect at the next tick boundary; a pause requested during an
 inference wait applies once that tick has finished. `reset` and `cancel` take effect at once
 and cancel any wait in progress. `step` runs exactly one tick from `idle` or `paused`.
+
+## Hybrid Boston runs
+
+In a hybrid run (`aiautonomy.engines.hybrid.run.HybridRun`, docs/contract.md §4) the browser game advances the clock. The game posts one observation per game tick. The engine checks it in two steps before any state changes:
+
+1. **Identity and ordering.** It returns the stored outcome for an identical repost, and answers 409 for a conflict, gap, stale epoch or ended run.
+2. **Validation.** It checks the whole observation and answers 422 with every failure.
+
+Then the same eight phases run for that tick:
+
+| # | Method | Work |
+|---|---|---|
+| 1 | `phase_events_and_timers` | Start and end disruptions of record; expire order priorities; open or close votes |
+| 2 | `phase_infrastructure` | Accept the observed incidents and unit availability; apply unit events (arrivals, clears) |
+| 3 | `phase_due_removals` | Removal outcomes due at `t`: a recall vote closing now, or authority withdrawn through `t − 1`. A removal skips straight to phase 8 |
+| 4 | `phase_staged_decisions` | Mayor and resident decisions whose apply tick is `t`: revalidate, then commit or reject atomically |
+| 5 | `phase_dispatch` | Standing 911 dispatch; retire resolved incidents |
+| 6 | `phase_residents_and_politics` | LLM residents' political acts, routine rules on politics ticks (petition, ballots, movement), protest pressure and recovery of authority; seeded modes for joining residents |
+| 7 | `phase_metrics_and_removal` | Satisfaction and the outcome window of decisions; the duration ends the run unless a removal happened in phase 3 |
+| 8 | `publish` | Hash the state, build the outcome, schedule the next mayor opportunity, record |
+
+Everything the engine decides at tick `t` takes effect in the game from tick `t + 1`.
+
+An exception while the phases apply a validated observation ends the run as `interrupted`, because a half-applied tick must not continue. Reset interrupts the run and starts a new run id at epoch + 1.

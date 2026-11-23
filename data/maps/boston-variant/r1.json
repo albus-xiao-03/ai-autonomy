@@ -1,0 +1,355 @@
+{
+  "format": "aia-map",
+  "format_version": 1,
+  "id": "boston-variant",
+  "revision": 1,
+  "name": "Boston · Cambridge St shortcut removed · Old West Church protected",
+  "parent": {
+    "id": "boston-template",
+    "revision": 1,
+    "sha256": "e368eec22308d7e27cd415e4682dfd0dfb1c06a86b247a37d6c4d52e05243b1b"
+  },
+  "sha256": "6279e42ab19a1d9f36dfbf7b737ac5e7930c791d033d4690064bf1f2231703f1",
+  "unlocked": [],
+  "content": {
+    "level": 1,
+    "nodes": [
+      {
+        "id": "n-mgh",
+        "x": -312.5,
+        "z": 460.0
+      },
+      {
+        "id": "n-west",
+        "x": -312.5,
+        "z": 600.0
+      },
+      {
+        "id": "n-bowdoin",
+        "x": 30.0,
+        "z": 600.0
+      },
+      {
+        "id": "n-gc",
+        "x": 325.0,
+        "z": 600.0
+      },
+      {
+        "id": "n-gc-north",
+        "x": 325.0,
+        "z": 470.0
+      },
+      {
+        "id": "n-sudbury",
+        "x": 530.0,
+        "z": 600.0
+      },
+      {
+        "id": "n-sudbury-north",
+        "x": 530.0,
+        "z": 470.0
+      },
+      {
+        "id": "n-court-west",
+        "x": 530.0,
+        "z": 710.0
+      },
+      {
+        "id": "n-court-east",
+        "x": 660.0,
+        "z": 710.0
+      },
+      {
+        "id": "n-bowdoin-south",
+        "x": 30.0,
+        "z": 880.0
+      },
+      {
+        "id": "n-tremont-south",
+        "x": 325.0,
+        "z": 880.0
+      }
+    ],
+    "roads": [
+      {
+        "id": "rd-mgh-spur",
+        "name": "North Grove St",
+        "a": "n-mgh",
+        "b": "n-west",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-cambridge-west",
+        "name": "Cambridge St",
+        "a": "n-west",
+        "b": "n-bowdoin",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-cambridge-east",
+        "name": "Cambridge St",
+        "a": "n-gc",
+        "b": "n-sudbury",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-congress",
+        "name": "Congress St",
+        "a": "n-gc",
+        "b": "n-gc-north",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-new-sudbury",
+        "name": "New Sudbury St",
+        "a": "n-sudbury",
+        "b": "n-sudbury-north",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-court-link",
+        "name": "Court St",
+        "a": "n-sudbury",
+        "b": "n-court-west",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-court",
+        "name": "Court St",
+        "a": "n-court-west",
+        "b": "n-court-east",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-bowdoin",
+        "name": "Bowdoin St",
+        "a": "n-bowdoin",
+        "b": "n-bowdoin-south",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-beacon",
+        "name": "Beacon St",
+        "a": "n-bowdoin-south",
+        "b": "n-tremont-south",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      },
+      {
+        "id": "rd-tremont",
+        "name": "Tremont St",
+        "a": "n-tremont-south",
+        "b": "n-gc",
+        "type": "twoway",
+        "bridge": false,
+        "tunnel": false
+      }
+    ],
+    "buildings": [
+      {
+        "id": "beacon",
+        "type": "residential",
+        "label": "Beacon Hill",
+        "x": -230.298,
+        "z": 690.184,
+        "rotation": 3.141592653589793,
+        "radius": 70.0,
+        "area": true,
+        "access": {
+          "road": "rd-cambridge-west"
+        }
+      },
+      {
+        "id": "government",
+        "type": "office",
+        "label": "Government Center",
+        "x": 411.247,
+        "z": 478.676,
+        "rotation": 4.71238898038469,
+        "radius": 70.0,
+        "area": true,
+        "access": {
+          "road": "rd-congress"
+        }
+      }
+    ],
+    "facilities": [
+      {
+        "id": "fac-pd-a1",
+        "name": "Boston Police District A-1",
+        "department": "police",
+        "x": 500.0,
+        "z": 479.0,
+        "rotation": 1.5707963267948966,
+        "radius": 15.0,
+        "access": {
+          "road": "rd-new-sudbury"
+        },
+        "landmark": null,
+        "units": [
+          {
+            "id": "pd-a1-1",
+            "kind": "cruiser"
+          },
+          {
+            "id": "pd-a1-2",
+            "kind": "cruiser"
+          }
+        ]
+      },
+      {
+        "id": "fac-fd-e4",
+        "name": "Boston Fire Engine 4 / Ladder 24",
+        "department": "fire",
+        "x": -107.0,
+        "z": 625.0,
+        "rotation": 3.141592653589793,
+        "radius": 15.0,
+        "access": {
+          "road": "rd-cambridge-west"
+        },
+        "landmark": null,
+        "units": [
+          {
+            "id": "fd-e4-engine",
+            "kind": "engine"
+          },
+          {
+            "id": "fd-e4-ladder",
+            "kind": "ladder"
+          }
+        ]
+      },
+      {
+        "id": "fac-mgh-ems",
+        "name": "Mass General EMS",
+        "department": "medical",
+        "x": -312.548,
+        "z": 389.62,
+        "rotation": 0.0,
+        "radius": 55.0,
+        "access": {
+          "road": "rd-mgh-spur"
+        },
+        "landmark": "lm-mass-general",
+        "units": [
+          {
+            "id": "ems-mgh-1",
+            "kind": "ambulance"
+          },
+          {
+            "id": "ems-mgh-2",
+            "kind": "ambulance"
+          }
+        ]
+      }
+    ],
+    "landmarks": [
+      {
+        "id": "lm-city-hall",
+        "name": "City Hall",
+        "kind": "canonical",
+        "site": "hall",
+        "x": 600.42,
+        "z": 634.524,
+        "radius": 60.0,
+        "locked": true
+      },
+      {
+        "id": "lm-td-garden",
+        "name": "TD Garden",
+        "kind": "canonical",
+        "site": "garden",
+        "x": 238.523,
+        "z": -33.396,
+        "radius": 95.0,
+        "locked": true
+      },
+      {
+        "id": "lm-mass-general",
+        "name": "Mass General",
+        "kind": "canonical",
+        "site": "hospital",
+        "x": -312.548,
+        "z": 389.62,
+        "radius": 55.0,
+        "locked": true
+      },
+      {
+        "id": "lm-old-north-church",
+        "name": "Old North Church",
+        "kind": "canonical",
+        "site": "church",
+        "x": 863.618,
+        "z": -33.396,
+        "radius": 25.0,
+        "locked": true
+      },
+      {
+        "id": "lm-quincy-market",
+        "name": "Quincy Market",
+        "kind": "canonical",
+        "site": "market",
+        "x": 888.293,
+        "z": 667.92,
+        "radius": 45.0,
+        "locked": true
+      },
+      {
+        "id": "lm-boston-common",
+        "name": "Boston Common",
+        "kind": "canonical",
+        "site": "common",
+        "x": -123.374,
+        "z": 1224.52,
+        "radius": 75.0,
+        "locked": true
+      },
+      {
+        "id": "lm-state-house",
+        "name": "State House",
+        "kind": "canonical",
+        "site": "statehouse",
+        "x": 98.699,
+        "z": 801.504,
+        "radius": 55.0,
+        "locked": true
+      },
+      {
+        "id": "lm-old-west-church",
+        "name": "Old West Church",
+        "kind": "user",
+        "site": null,
+        "x": -49.3,
+        "z": 512.1,
+        "radius": 20.0,
+        "locked": true
+      }
+    ],
+    "fixed": [
+      {
+        "id": "i93",
+        "source": "game/highway-data.js",
+        "sha256": "790e0876769794c2e119c62be3838e2090124d637c07c8d3e99e497c9a48ff8c"
+      }
+    ],
+    "mayor_office": "lm-city-hall"
+  }
+}

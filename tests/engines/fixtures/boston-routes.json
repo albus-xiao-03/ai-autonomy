@@ -1,0 +1,165 @@
+{
+  "description": "Unit-to-site routes on the game road graph for the Boston trace (tests/boston-trace.cjs). ticks = max(2, ceil(length / 360 m)); storm_ticks divides the speed by the Storm multiplier.",
+  "speed_m_per_tick": 360,
+  "storm_speed_multiplier_bp": 7000,
+  "sites": {
+    "A": {
+      "x": 360,
+      "z": 560
+    },
+    "B": {
+      "x": -180,
+      "z": 585
+    }
+  },
+  "maps": {
+    "boston-template": {
+      "revision": 1,
+      "sha256": "e368eec22308d7e27cd415e4682dfd0dfb1c06a86b247a37d6c4d52e05243b1b",
+      "commute_m": {
+        "beacon->government": 853.1,
+        "government->beacon": 853.1
+      },
+      "routes": {
+        "A": {
+          "pd-a1-1": {
+            "length_m": 431,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "pd-a1-2": {
+            "length_m": 431,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "fd-e4-engine": {
+            "length_m": 532,
+            "ticks": 2,
+            "storm_ticks": 3
+          },
+          "fd-e4-ladder": {
+            "length_m": 532,
+            "ticks": 2,
+            "storm_ticks": 3
+          },
+          "ems-mgh-1": {
+            "length_m": 922.9,
+            "ticks": 3,
+            "storm_ticks": 4
+          },
+          "ems-mgh-2": {
+            "length_m": 922.9,
+            "ticks": 3,
+            "storm_ticks": 4
+          }
+        },
+        "B": {
+          "pd-a1-1": {
+            "length_m": 876,
+            "ticks": 3,
+            "storm_ticks": 4
+          },
+          "pd-a1-2": {
+            "length_m": 876,
+            "ticks": 3,
+            "storm_ticks": 4
+          },
+          "fd-e4-engine": {
+            "length_m": 113,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "fd-e4-ladder": {
+            "length_m": 113,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "ems-mgh-1": {
+            "length_m": 357.9,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "ems-mgh-2": {
+            "length_m": 357.9,
+            "ticks": 2,
+            "storm_ticks": 2
+          }
+        }
+      }
+    },
+    "boston-variant": {
+      "revision": 1,
+      "sha256": "6279e42ab19a1d9f36dfbf7b737ac5e7930c791d033d4690064bf1f2231703f1",
+      "commute_m": {
+        "beacon->government": 1413.1,
+        "government->beacon": 1413.1
+      },
+      "routes": {
+        "A": {
+          "pd-a1-1": {
+            "length_m": 431,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "pd-a1-2": {
+            "length_m": 431,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "fd-e4-engine": {
+            "length_m": 1092,
+            "ticks": 4,
+            "storm_ticks": 5
+          },
+          "fd-e4-ladder": {
+            "length_m": 1092,
+            "ticks": 4,
+            "storm_ticks": 5
+          },
+          "ems-mgh-1": {
+            "length_m": 1482.9,
+            "ticks": 5,
+            "storm_ticks": 6
+          },
+          "ems-mgh-2": {
+            "length_m": 1482.9,
+            "ticks": 5,
+            "storm_ticks": 6
+          }
+        },
+        "B": {
+          "pd-a1-1": {
+            "length_m": 1436,
+            "ticks": 4,
+            "storm_ticks": 6
+          },
+          "pd-a1-2": {
+            "length_m": 1436,
+            "ticks": 4,
+            "storm_ticks": 6
+          },
+          "fd-e4-engine": {
+            "length_m": 113,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "fd-e4-ladder": {
+            "length_m": 113,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "ems-mgh-1": {
+            "length_m": 357.9,
+            "ticks": 2,
+            "storm_ticks": 2
+          },
+          "ems-mgh-2": {
+            "length_m": 357.9,
+            "ticks": 2,
+            "storm_ticks": 2
+          }
+        }
+      }
+    }
+  }
+}

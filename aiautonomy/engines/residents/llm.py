@@ -6,9 +6,10 @@ unlawful actions; the game applies the consequences (police, authority loss, clo
 
 import json
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
-from aiautonomy.engines.agents.ollama import OllamaClient, OllamaError
+from aiautonomy.engines.agents.ollama import DEFAULT_ENDPOINT, OllamaClient, OllamaError
 
 RESIDENT_MODEL = "qwen3:1.7b"
 LAWFUL = ["follow_routine", "go_home", "visit_venue", "peaceful_protest", "stay_put"]
@@ -76,3 +77,111 @@ async def decide(
             "ms": int((time.monotonic() - started) * 1000),
             "error": str(error)[:200],
         }
+
+
+# --- run-scoped resident decisions (docs/contract.md §7) ----------------------------------
+
+
+class ReplayedTimeout(Exception):
+    """Raised by a replay provider for a resident reply recorded as missing (a timeout)."""
+
+
+@dataclass(frozen=True, slots=True)
+class ResidentBatch:
+    """One batched request: LLM residents' observations, the offered actions, public context."""
+
+    batch_id: str
+    residents: list[dict[str, Any]]
+    offered: list[str]
+    context: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ResidentReply:
+    decisions: dict[int, tuple[str, str]]
+    """Resident id → (action, thought) for every valid entry the model returned."""
+    model: str
+    error: str | None = None
+    latency_ms: int = 0
+
+
+class ResidentProvider(Protocol):
+    model: str
+
+    async def decide(self, batch: ResidentBatch) -> ResidentReply: ...
+
+
+class LocalResidentProvider:
+    """Local Ollama only (loopback client, the one-model lock); never a remote provider.
+
+    Before the first call (and again after any failure) it checks that the engine-configured
+    model is installed locally, and matches its pinned digest when one is configured. A
+    missing or mismatched model is an error reply: residents follow their routine, and no
+    other provider is tried (LOCAL-02).
+    """
+
+    def __init__(
+        self,
+        model: str,
+        wait_s: float,
+        digest: str | None = None,
+        endpoint: str = DEFAULT_ENDPOINT,
+    ) -> None:
+        self.model = model
+        self.wait_s = wait_s
+        self.digest = digest
+        self.endpoint = endpoint
+        self._verified = False
+
+    async def decide(self, batch: ResidentBatch) -> ResidentReply:
+        started = time.monotonic()
+        try:
+            client = OllamaClient("resident", endpoint=self.endpoint)
+            if not self._verified:
+                installed, reason = await client.installed(self.model, self.digest)
+                if not installed:
+                    return ResidentReply({}, self.model, reason, _ms(started))
+                self._verified = True
+        except OllamaError as error:
+            return ResidentReply({}, self.model, str(error)[:200], _ms(started))
+        ids = [int(r["id"]) for r in batch.residents]
+        schema = {
+            "type": "object",
+            "properties": {
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer", "enum": ids},
+                            "action": {"type": "string", "enum": batch.offered},
+                            "thought": {"type": "string", "maxLength": 140},
+                        },
+                        "required": ["id", "action", "thought"],
+                    },
+                }
+            },
+            "required": ["decisions"],
+        }
+        user = json.dumps(
+            {"city": batch.context, "residents": batch.residents, "allowed": batch.offered},
+            sort_keys=True,
+        )
+        try:
+            data = await client.chat_json(
+                self.model, SYSTEM, user, schema, wait_s=self.wait_s,
+                num_predict=60 * len(ids) + 60,
+            )  # fmt: skip
+        except OllamaError as error:
+            self._verified = False
+            return ResidentReply({}, self.model, str(error)[:200], _ms(started))
+        decisions: dict[int, tuple[str, str]] = {}
+        for item in data.get("decisions", []) if isinstance(data, dict) else []:
+            rid, action = item.get("id"), item.get("action")
+            if rid in ids and action in batch.offered and rid not in decisions:
+                decisions[rid] = (action, str(item.get("thought", ""))[:140])
+        return ResidentReply(decisions, self.model, None, _ms(started))
+
+
+def _ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)

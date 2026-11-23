@@ -34,6 +34,13 @@ sim:
   llm_ratio_bp: 5000
 record:
   snapshot_interval: 30
+inference:
+  mayor_local_model: qwen3:8b
+  mayor_api_model: claude-haiku-5-5
+  resident_model: qwen3:1.7b
+  mayor_wait_s: 45
+  resident_wait_s: 45
+  resident_batch_max: 8
 """
 
 

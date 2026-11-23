@@ -6,10 +6,18 @@ Calls run in a worker thread so the asyncio loop keeps serving other requests.
 One model at a time (SPEC.md Section 2): every chat call holds one process-wide lock, and
 before a call any other model Ollama has in memory is unloaded (`keep_alive: 0`). The mayor
 (qwen3:8b) and residents (qwen3:1.7b) therefore take turns instead of sharing RAM.
+
+The unload and the chat run as one blocking job in a worker thread, and that thread holds the
+lock (a `threading.Lock`, shared by every event loop). A caller that is cancelled (run reset,
+SIM-05) or times out stops waiting at once, but the lock stays held until the HTTP call in
+progress returns, so the next call can never unload a model mid-generation and load a second
+one beside it. The abandoned call's late reply is dropped, and a job whose caller left before
+it got the lock sends nothing to Ollama.
 """
 
 import asyncio
 import json
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,19 +28,34 @@ from aiautonomy.engines.agents.clients import register_client
 DEFAULT_ENDPOINT = "http://127.0.0.1:11434"
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
 KEEP_ALIVE = "5m"
-_model_lock: asyncio.Lock | None = None
+_model_lock: threading.Lock | None = None
+_model_lock_init = threading.Lock()
 
 
-def _lock() -> asyncio.Lock:
+def _lock() -> threading.Lock:
     """The single lock that serializes every model call in this engine process."""
     global _model_lock
-    if _model_lock is None:
-        _model_lock = asyncio.Lock()
-    return _model_lock
+    with _model_lock_init:
+        if _model_lock is None:
+            _model_lock = threading.Lock()
+        return _model_lock
 
 
 class OllamaError(RuntimeError):
     """Ollama is unreachable or returned something unusable."""
+
+
+def same_model(installed: str, configured: str) -> bool:
+    """Ollama tags without a version mean `:latest`."""
+
+    def norm(name: str) -> str:
+        return name if ":" in name else f"{name}:latest"
+
+    return norm(installed) == norm(configured)
+
+
+class _Abandoned(OllamaError):
+    """The job's caller left before the job sent its model call; never reaches a caller."""
 
 
 class OllamaClient:
@@ -65,24 +88,60 @@ class OllamaClient:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
             raise OllamaError(str(error)) from error
 
+    def _loaded(self, wait_s: float) -> list[str]:
+        data = self._get("/api/ps", wait_s)
+        return [str(m.get("name") or m.get("model")) for m in data.get("models", [])]
+
     async def models(self, wait_s: float = 2.0) -> list[str]:
         data = await asyncio.to_thread(self._get, "/api/tags", wait_s)
         return [str(m.get("name")) for m in data.get("models", [])]
 
+    async def installed(
+        self, model: str, digest: str | None = None, wait_s: float = 2.0
+    ) -> tuple[bool, str]:
+        """Whether `model` is installed in this local Ollama (and matches a pinned digest).
+
+        Returns `(installed, reason)`. Unreachable Ollama raises `OllamaError`.
+        """
+        data = await asyncio.to_thread(self._get, "/api/tags", wait_s)
+        for entry in data.get("models", []):
+            name = str(entry.get("name") or entry.get("model") or "")
+            if same_model(name, model):
+                found = entry.get("digest")
+                if digest is not None and found != digest:
+                    return False, f"local model {model} has digest {found}, not the pinned {digest}"
+                return True, ""
+        return False, f"model {model} is not installed in the local Ollama (no remote fallback)"
+
     async def loaded_models(self, wait_s: float = 2.0) -> list[str]:
         """Models Ollama currently holds in memory (`/api/ps`)."""
-        data = await asyncio.to_thread(self._get, "/api/ps", wait_s)
-        return [str(m.get("name") or m.get("model")) for m in data.get("models", [])]
+        return await asyncio.to_thread(self._loaded, wait_s)
 
-    async def _unload_others(self, keep: str) -> list[str]:
-        """Unload every in-memory model except `keep`; returns the names unloaded."""
+    def _unload_others(self, keep: str) -> list[str]:
+        """Unload every in-memory model except `keep`; returns the names unloaded (blocking)."""
         unloaded = []
-        for name in await self.loaded_models():
+        for name in self._loaded(2.0):
             if name != keep:
-                body = {"model": name, "keep_alive": 0}
-                await asyncio.to_thread(self._post, "/api/generate", body, 30.0)
+                self._post("/api/generate", {"model": name, "keep_alive": 0}, 30.0)
                 unloaded.append(name)
         return unloaded
+
+    def _unload_and_chat(
+        self, model: str, body: dict[str, Any], wait_s: float, abandoned: threading.Event
+    ) -> dict[str, Any]:
+        """The blocking job behind `chat_json`, run in a worker thread.
+
+        It holds the model lock from start to end, even after its caller is gone, so no other
+        job can unload `model` mid-generation or load a second model beside it. Once
+        `abandoned` is set it starts no further model work.
+        """
+        with _lock():
+            if abandoned.is_set():  # the caller left while this job waited for the lock
+                raise _Abandoned
+            self._unload_others(model)
+            if abandoned.is_set():  # the caller left during the unload: do not load its model
+                raise _Abandoned
+            return self._post("/api/chat", body, wait_s)
 
     async def chat_json(
         self,
@@ -94,7 +153,11 @@ class OllamaClient:
         wait_s: float = 30.0,
         num_predict: int = 200,
     ) -> dict[str, Any]:
-        """One non-streaming chat call constrained to `schema`; returns the parsed JSON object."""
+        """One non-streaming chat call constrained to `schema`; returns the parsed JSON object.
+
+        Cancelling the caller (run reset) or timing it out raises at once; the model call it
+        started still finishes under the lock, and its reply is dropped.
+        """
         body = {
             "model": model,
             "messages": [
@@ -107,9 +170,14 @@ class OllamaClient:
             "keep_alive": KEEP_ALIVE,
             "options": {"temperature": 0.4, "num_predict": num_predict, "num_ctx": 4096},
         }
-        async with _lock():
-            await self._unload_others(model)
-            data = await asyncio.to_thread(self._post, "/api/chat", body, wait_s)
+        abandoned = threading.Event()
+        try:
+            data = await asyncio.to_thread(self._unload_and_chat, model, body, wait_s, abandoned)
+        except asyncio.CancelledError:
+            # Cancelling us also cancelled the worker's future (or it had already finished),
+            # so asyncio drops the worker's late reply or error without logging it.
+            abandoned.set()
+            raise
         try:
             parsed: dict[str, Any] = json.loads(data["message"]["content"].strip())
         except (KeyError, TypeError, json.JSONDecodeError) as error:

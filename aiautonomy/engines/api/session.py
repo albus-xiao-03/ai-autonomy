@@ -50,6 +50,7 @@ from aiautonomy.engines.sim.driver import ArtificialInferenceWait, CommandError,
 from aiautonomy.engines.sim.run import Run, TickResult
 from aiautonomy.engines.sim.status import RunState, Speed, ticks_per_second
 from aiautonomy.engines.world.state import find_entity
+from aiautonomy.engines.world.toy import ToyWorldConfig
 
 log = logging.getLogger(__name__)
 
@@ -100,6 +101,8 @@ class SessionOptions:
     root: Path | None = None
     publish_interval_s: float = 0.05
     """At max speed, ticks are coalesced into at most one delta per interval."""
+    maps_dir: Path | None = None
+    """User map saves (default `maps_dir()`: `AIA_MAPS_DIR` or `<root>/maps`)."""
 
 
 def _cmd_id_of(text: str) -> str:
@@ -319,6 +322,11 @@ class EngineSession:
                     )
                 )
                 resolved = resolve_run_config(overrides, root=self.options.root)
+                if not isinstance(resolved.config.world, ToyWorldConfig):
+                    raise CommandError(
+                        f"scenario {resolved.config.scenario!r} is driven by the game "
+                        "through /api/runs"
+                    )
                 self.overrides = overrides
                 self.driver.abandon("reconfigured")
                 self._replace_run(resolved)

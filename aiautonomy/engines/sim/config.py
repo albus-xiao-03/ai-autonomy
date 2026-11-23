@@ -8,12 +8,13 @@ frozen field needs a new run.
 REQ: SIM-01, SIM-04
 """
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag
 
 from aiautonomy.engines.core.datafiles import (
     DataFileError,
@@ -23,12 +24,27 @@ from aiautonomy.engines.core.datafiles import (
 )
 from aiautonomy.engines.core.money import apply_bp
 from aiautonomy.engines.core.paths import repo_root
+from aiautonomy.engines.world.boston import BostonWorldConfig
 from aiautonomy.engines.world.toy import ToyWorldConfig
 
 MAX_SEED = 2**53 - 1
 MAX_DURATION = 100_000
 DEFAULT_SCENARIO_ALIAS = "default"
 _SCENARIO_FILE = re.compile(r"^(?P<name>[a-z][a-z0-9_-]*)\.v(?P<version>\d+)\.yaml$")
+
+
+def _world_kind(value: Any) -> str:
+    """`kind` of a world section; scenario files written before hybrid runs omit it (toy)."""
+    if isinstance(value, dict):
+        return str(value.get("kind", "toy_grid"))
+    return str(getattr(value, "kind", "toy_grid"))
+
+
+WorldConfig = Annotated[
+    Annotated[ToyWorldConfig, Tag("toy_grid")] | Annotated[BostonWorldConfig, Tag("boston_hybrid")],
+    Discriminator(_world_kind),
+]
+"""The toy grid (M0, driven by the engine) or a hybrid Boston run (driven by the game)."""
 
 
 class _Frozen(BaseModel):
@@ -63,12 +79,41 @@ class RecordSettings(_Frozen):
     snapshot_interval: int = Field(ge=1)
 
 
+class InferenceSettings(_Frozen):
+    """`inference:` of `config/engine.yaml`: model selection and bounded waits."""
+
+    mayor_local_model: str = Field(min_length=1, max_length=128)
+    mayor_api_model: str = Field(min_length=1, max_length=128)
+    resident_model: str = Field(min_length=1, max_length=128)
+    resident_model_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    mayor_wait_s: float = Field(gt=0, le=600)
+    resident_wait_s: float = Field(gt=0, le=600)
+    resident_batch_max: int = Field(ge=1, le=32)
+
+
 class EngineFile(DataFileModel):
     """`config/engine.yaml`."""
 
     default_scenario: str
     sim: SimSettings
     record: RecordSettings
+    inference: InferenceSettings
+
+
+def effective_inference(settings: InferenceSettings) -> InferenceSettings:
+    """Apply `AIA_MAYOR_MODEL` / `AIA_RESIDENT_MODEL` (local model names on this machine)."""
+    updates: dict[str, str] = {}
+    if mayor := os.environ.get("AIA_MAYOR_MODEL"):
+        updates["mayor_local_model"] = mayor
+    if resident := os.environ.get("AIA_RESIDENT_MODEL"):
+        updates["resident_model"] = resident
+    return settings.model_copy(update=updates) if updates else settings
+
+
+def load_inference_settings(root: Path | None = None) -> InferenceSettings:
+    root = root or repo_root()
+    engine = load_data_file(engine_config_path(root), EngineFile, root=root)
+    return effective_inference(engine.model.inference)
 
 
 class ScenarioFile(DataFileModel):
@@ -78,7 +123,7 @@ class ScenarioFile(DataFileModel):
     description: str = ""
     sim: SimOverrides = SimOverrides()
     stream_seed_overrides: dict[str, int] = Field(default_factory=dict)
-    world: ToyWorldConfig
+    world: WorldConfig
 
 
 class RunOverrides(_Frozen):
@@ -87,6 +132,8 @@ class RunOverrides(_Frozen):
     scenario: str | None = None
     seed: int | None = Field(default=None, ge=0, le=MAX_SEED)
     duration: int | None = Field(default=None, ge=1, le=MAX_DURATION)
+    population: int | None = Field(default=None, ge=0)
+    llm_ratio_bp: int | None = Field(default=None, ge=0, le=10_000)
 
     def merged(self, newer: RunOverrides) -> RunOverrides:
         """These overrides with every field `newer` sets replaced."""
@@ -99,7 +146,7 @@ class RunConfig(SimSettings):
     scenario: str
     snapshot_interval: int = Field(ge=1)
     stream_seed_overrides: dict[str, int] = Field(default_factory=dict)
-    world: ToyWorldConfig
+    world: WorldConfig
 
     @property
     def llm_count(self) -> int:
