@@ -13,11 +13,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from aiautonomy.engines.contract.common import Department
+from aiautonomy.engines.contract.decisions import AuthorityChange
 from aiautonomy.engines.contract.dispatch import UnitState as UnitStateName
 from aiautonomy.engines.contract.dispatch import UnitView
 from aiautonomy.engines.contract.maps import MapContent
 from aiautonomy.engines.contract.runs import IncidentObservation
 from aiautonomy.engines.core.ids import IdCounters
+from aiautonomy.engines.hybrid.decisions import Decision, Order
 from aiautonomy.engines.hybrid.disruptions import Disruption
 
 
@@ -132,6 +134,12 @@ class HybridState:
     disruptions: dict[str, Disruption] = field(default_factory=dict)
     injections: dict[str, tuple[str, str]] = field(default_factory=dict)
     """Injection request id → (body digest, disruption id), for idempotent reposts."""
+    decisions: dict[str, Decision] = field(default_factory=dict)
+    orders: dict[str, Order] = field(default_factory=dict)
+    authority_log: list[AuthorityChange] = field(default_factory=list)
+    pending_decision: str | None = None
+    mayor_offline: bool = False
+    outage_hold: str | None = None
 
     @classmethod
     def initial(

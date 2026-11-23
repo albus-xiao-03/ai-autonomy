@@ -41,8 +41,8 @@ def test_routine_dispatch_sends_the_nearest_qualified_units(tmp_path: Path) -> N
     assert units["fd-e4-engine"]["incident_id"] == "game-gas"
     assert units["fd-e4-ladder"]["state"] == "available"
     assert outcome["queue"] == []
-    assert outcome["decisions"] == []
-    assert outcome["orders"] == []
+    assert outcome["orders"] == []  # the mayor may be asked, but routine dispatch never waits
+    assert all(decision["outcome"] == "pending" for decision in outcome["decisions"])
     assert clients_created() == before  # no model involved
 
 

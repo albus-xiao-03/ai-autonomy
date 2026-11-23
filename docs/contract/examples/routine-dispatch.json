@@ -1,5 +1,5 @@
 {
-  "description": "Outcome of tick 42 with a silent mayor: standing dispatch assigns the nearest fire unit (tie broken by unit id) and the nearest police unit to the gas leak. No model was called. The game starts moving both units at tick 43.",
+  "description": "Outcome of tick 42: standing dispatch assigns the nearest fire unit and the nearest police unit to the gas leak (equal travel times go to the lower unit id). No model is involved; the game starts moving both units at tick 43.",
   "examples": [
     {
       "type": "TickOutcome",
@@ -137,7 +137,7 @@
           "next_opportunity_tick": 60
         },
         "removal": null,
-        "state_hash": "7f8a61eba152d02bba58ad9b90664a96cc14976f61f5cc51d9f304c7bf648ad2",
+        "state_hash": "e67e7dd496474ef140986e541a2d2b8f862e171d8e5db3431947bab633a21cfd",
         "warnings": []
       }
     }

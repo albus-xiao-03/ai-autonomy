@@ -1,12 +1,12 @@
 {
-  "description": "Tick 75: a flood closed the low roads between the fire station and Beacon Hill, so the game reports both fire units as unreachable; police and ambulances still have routes.",
+  "description": "Tick 75: a flood (inc-000002) closed the low roads between the fire station and Beacon Hill, so the game reports both fire units as unreachable; police and ambulances still have routes.",
   "examples": [
     {
       "type": "TickObservation",
       "value": {
         "run_epoch": 1,
         "tick": 75,
-        "satisfaction": 80.0,
+        "satisfaction": 79.0,
         "incidents": [
           {
             "id": "inc-000002",

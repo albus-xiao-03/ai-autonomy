@@ -20,3 +20,16 @@ sim:
 
 record:
   snapshot_interval: 30       # full state snapshot every N ticks and at the end
+
+# Local-first inference (SPEC.md Part A §2, §6; docs/contract.md §6–§7). Resident inference is
+# always local Ollama on loopback; the paid mayor API stays off unless AIA_ALLOW_PAID_API=1 and
+# ANTHROPIC_API_KEY are set where the engine runs. AIA_MAYOR_MODEL and AIA_RESIDENT_MODEL
+# override the local model names (for a machine whose Ollama tags differ).
+inference:
+  mayor_local_model: qwen3:8b
+  mayor_api_model: claude-haiku-5-5
+  resident_model: qwen3:1.7b
+  resident_model_digest: null   # optional sha256 pin of the installed resident model
+  mayor_wait_s: 45              # a mayor reply is awaited at most this long, then the mayor holds
+  resident_wait_s: 45
+  resident_batch_max: 8

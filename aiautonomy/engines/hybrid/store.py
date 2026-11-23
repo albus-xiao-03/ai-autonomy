@@ -12,18 +12,48 @@ import asyncio
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from aiautonomy.engines.contract.common import MayorBackend
 from aiautonomy.engines.contract.runs import RunLaunchRequest
 from aiautonomy.engines.core.datafiles import DataFileError, DataFileRef
 from aiautonomy.engines.hybrid import disruptions
 from aiautonomy.engines.hybrid.catalogs import load_catalogs
 from aiautonomy.engines.hybrid.run import HybridRun, HybridSink, RunError, RunSetup
 from aiautonomy.engines.mayor.backends import api_available
-from aiautonomy.engines.sim.config import RunOverrides, resolve_run_config
+from aiautonomy.engines.mayor.providers import (
+    ApiProvider,
+    BaselineProvider,
+    LocalProvider,
+    MayorProvider,
+)
+from aiautonomy.engines.sim.config import (
+    InferenceSettings,
+    RunOverrides,
+    load_inference_settings,
+    resolve_run_config,
+)
 from aiautonomy.engines.world.boston import BostonWorldConfig
 from aiautonomy.engines.world.map_store import MapStore
 from aiautonomy.engines.world.maps import CANONICAL_CATALOG, canonical_catalog
 
 DEFAULT_MAX_LIVE = 16
+
+
+def default_provider(backend: MayorBackend, inference: InferenceSettings) -> MayorProvider:
+    """The mayor provider for a backend, with the engine-configured models.
+
+    The API mayor is refused unless the engine runs with the paid-API interlock.
+    """
+    if backend == "local":
+        return LocalProvider(inference.mayor_local_model, inference.mayor_wait_s)
+    if backend == "api":
+        if not api_available():
+            raise RunError(
+                409,
+                "paid_api_disabled",
+                "the API mayor needs AIA_ALLOW_PAID_API=1 and ANTHROPIC_API_KEY on the engine",
+            )
+        return ApiProvider(inference.mayor_api_model)
+    return BaselineProvider()
 
 
 class RunStore:
@@ -35,12 +65,16 @@ class RunStore:
         new_run_id: Callable[[str, int], str],
         sinks: Callable[[], Sequence[HybridSink]] = list,
         max_live: int = DEFAULT_MAX_LIVE,
+        providers: Callable[[MayorBackend, InferenceSettings], MayorProvider] = default_provider,
+        inference: InferenceSettings | None = None,
     ) -> None:
         self.maps = maps
         self.root = root
         self.new_run_id = new_run_id
         self.sinks = sinks
         self.max_live = max_live
+        self.providers = providers
+        self.inference = inference
         self.runs: dict[str, HybridRun] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
@@ -50,12 +84,6 @@ class RunStore:
         report, _ = self.maps.validate(revision.content, None, [])
         if not report.ok:
             raise RunError(422, "map_invalid", "the pinned map is not valid", report.failures)
-        if request.mayor_backend == "api" and not api_available():
-            raise RunError(
-                409,
-                "paid_api_disabled",
-                "the API mayor needs AIA_ALLOW_PAID_API=1 and ANTHROPIC_API_KEY on the engine",
-            )
         overrides = RunOverrides(
             scenario=request.scenario,
             seed=request.seed,
@@ -104,6 +132,7 @@ class RunStore:
         ]
         if failures:
             raise RunError(422, failures[0].code, "a scheduled disruption is not valid", failures)
+        inference = self.inference or load_inference_settings(self.root)
         return RunSetup(
             request=request,
             config=resolved.config,
@@ -111,15 +140,20 @@ class RunStore:
             map_revision=revision,
             catalogs=catalogs,
             bounds=bounds,
+            inference=inference,
         )
 
     def launch(self, request: RunLaunchRequest) -> HybridRun:
         setup = self.setup(request)
+        self.providers(request.mayor_backend, setup.inference)  # refuse before recording
         return self._start(setup, run_epoch=1)
 
     def _start(self, setup: RunSetup, run_epoch: int) -> HybridRun:
         run_id = self.new_run_id(setup.config.scenario, setup.config.seed)
-        run = HybridRun(setup, run_id=run_id, run_epoch=run_epoch, sinks=self.sinks())
+        provider = self.providers(setup.request.mayor_backend, setup.inference)
+        run = HybridRun(
+            setup, run_id=run_id, run_epoch=run_epoch, sinks=self.sinks(), provider=provider
+        )
         self.runs[run_id] = run
         self._evict()
         return run

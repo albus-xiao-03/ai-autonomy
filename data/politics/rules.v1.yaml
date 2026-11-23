@@ -1,0 +1,37 @@
+# Political rules of hybrid runs (SPEC.md Part A §8 and §10, docs/contract.md §6 and §9).
+# Every value is a proposed tuning default (SPEC.md Part B POL-04: no universal thresholds); the
+# file is versioned and its hash is recorded in every run manifest.
+id: politics
+version: 1
+schema_version: 1
+title: Authority, order costs, petition, recall vote and protest rules
+
+authority:
+  initial: 100                  # political authority, 0-100; satisfaction never changes it
+  recovery_interval_ticks: 60   # +1 per interval without a penalty or protest pressure
+  recovery_step: 1
+
+orders:                         # exceptional mayor orders
+  window_ticks: 120             # rolling window
+  allowance: 2                  # distinct accepted orders inside the window that cost nothing
+  penalty: 5                    # authority points per counted order beyond the allowance
+
+petition:                       # recall petition (organizing)
+  threshold_bp: 3000            # unique signers needed, as a share of residents
+  routine_sign_below_mood: 35   # a routine resident signs when its mood is below this
+  cooldown_ticks: 120           # after a failed vote, before signatures count again
+
+vote:                           # recall ballot
+  opens_after_ticks: 1          # the vote opens on the tick after the threshold is reached
+  window_ticks: 60
+  min_turnout_bp: 5000          # ballots / eligible residents needed for a valid result
+  routine_replace_below_mood: 45  # routine residents vote replace below this mood, else retain
+
+protest:                        # protest movement and protest-driven withdrawal of authority
+  routine_join_below_mood: 25   # routine residents join an active movement below this mood
+  min_participants: 3           # unique participants for the movement to count as active
+  persistence_ticks: 60         # a participant stays in the movement this long after joining
+  pressure_interval_ticks: 10   # -1 authority per interval while the movement is active
+  withdrawal_ticks: 30          # authority held at 0 under an active movement this long removes the mayor
+
+removal_priority: [recall_vote, authority_withdrawn]   # primary label when both succeed together

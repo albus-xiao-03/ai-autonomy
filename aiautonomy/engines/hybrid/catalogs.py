@@ -27,6 +27,7 @@ from aiautonomy.engines.core.datafiles import DataFileModel, DataFileRef, load_d
 
 DISPATCH_CATALOG = Path("data/catalogs/dispatch.v1.yaml")
 DISRUPTION_CATALOG = Path("data/catalogs/disruptions.v1.yaml")
+POLITICS_RULES = Path("data/politics/rules.v1.yaml")
 
 
 class DispatchCatalog(DataFileModel):
@@ -77,6 +78,61 @@ class DisruptionCatalog(DataFileModel):
         return self
 
 
+class _Rules(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AuthorityRules(_Rules):
+    initial: int = Field(ge=0, le=100)
+    recovery_interval_ticks: int = Field(ge=1)
+    recovery_step: int = Field(ge=0, le=100)
+
+
+class OrderRules(_Rules):
+    window_ticks: int = Field(ge=1)
+    allowance: int = Field(ge=0)
+    penalty: int = Field(ge=0, le=100)
+
+
+class PetitionRules(_Rules):
+    threshold_bp: int = Field(ge=1, le=10_000)
+    routine_sign_below_mood: float = Field(ge=0, le=100)
+    cooldown_ticks: int = Field(ge=0)
+
+
+class VoteRules(_Rules):
+    opens_after_ticks: int = Field(ge=1)
+    window_ticks: int = Field(ge=1)
+    min_turnout_bp: int = Field(ge=0, le=10_000)
+    routine_replace_below_mood: float = Field(ge=0, le=100)
+
+
+class ProtestRules(_Rules):
+    routine_join_below_mood: float = Field(ge=0, le=100)
+    min_participants: int = Field(ge=1)
+    persistence_ticks: int = Field(ge=1)
+    pressure_interval_ticks: int = Field(ge=1)
+    withdrawal_ticks: int = Field(ge=1)
+
+
+class PoliticsRules(DataFileModel):
+    """`data/politics/rules.v1.yaml` (POL-04: explicit, versioned, recorded)."""
+
+    title: str
+    authority: AuthorityRules
+    orders: OrderRules
+    petition: PetitionRules
+    vote: VoteRules
+    protest: ProtestRules
+    removal_priority: list[str]
+
+    @model_validator(mode="after")
+    def _priority_names_every_mechanism(self) -> Self:
+        if sorted(self.removal_priority) != ["authority_withdrawn", "recall_vote"]:
+            raise ValueError("removal_priority must order recall_vote and authority_withdrawn")
+        return self
+
+
 def scaled_severity(base: int, intensity: int) -> int:
     """Severity = base × intensity / 50, rounded half up, clamped to 1..100."""
     return max(1, min(100, (base * intensity * 2 + 50) // 100))
@@ -86,6 +142,7 @@ def scaled_severity(base: int, intensity: int) -> int:
 class Catalogs:
     dispatch: DispatchCatalog
     disruptions: tuple[DisruptionTypeSpec, ...]
+    politics: PoliticsRules
     refs: tuple[DataFileRef, ...]
 
     def disruption(self, type_id: str) -> DisruptionTypeSpec:
@@ -113,10 +170,12 @@ def _load(root: str) -> Catalogs:
     base = Path(root)
     dispatch = load_data_file(base / DISPATCH_CATALOG, DispatchCatalog, root=base)
     disruptions = load_data_file(base / DISRUPTION_CATALOG, DisruptionCatalog, root=base)
+    politics = load_data_file(base / POLITICS_RULES, PoliticsRules, root=base)
     return Catalogs(
         dispatch=dispatch.model,
         disruptions=tuple(_types(disruptions.model.types, dispatch.model)),
-        refs=(dispatch.ref, disruptions.ref),
+        politics=politics.model,
+        refs=(dispatch.ref, disruptions.ref, politics.ref),
     )
 
 

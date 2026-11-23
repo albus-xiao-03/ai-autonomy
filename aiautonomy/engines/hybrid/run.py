@@ -27,7 +27,11 @@ from aiautonomy.engines.contract.common import (
     MayorBackend,
     RunStatusLabel,
 )
-from aiautonomy.engines.contract.decisions import AuthorityChange
+from aiautonomy.engines.contract.decisions import (
+    AuthorityChange,
+    MayorDecisionRecord,
+    OrderRecord,
+)
 from aiautonomy.engines.contract.dispatch import Assignment, QueueEntry, Release
 from aiautonomy.engines.contract.disruptions import (
     DisruptionInjectRequest,
@@ -59,9 +63,12 @@ from aiautonomy.engines.core.money import apply_bp
 from aiautonomy.engines.core.rng import KeyedRng, derive_stream_seeds
 from aiautonomy.engines.hybrid import dispatch, disruptions, residents
 from aiautonomy.engines.hybrid.catalogs import Catalogs
+from aiautonomy.engines.hybrid.desk import MayorDesk
+from aiautonomy.engines.hybrid.dispatch import RouteTable
 from aiautonomy.engines.hybrid.disruptions import Disruption
 from aiautonomy.engines.hybrid.state import HybridState, Incident
-from aiautonomy.engines.sim.config import RunConfig
+from aiautonomy.engines.mayor.providers import BaselineProvider, MayorProvider
+from aiautonomy.engines.sim.config import InferenceSettings, RunConfig
 from aiautonomy.engines.world.boston import BostonWorldConfig
 from aiautonomy.engines.world.maps import LevelBounds
 
@@ -117,6 +124,7 @@ class RunSetup:
     map_revision: MapRevision
     catalogs: Catalogs
     bounds: LevelBounds
+    inference: InferenceSettings
 
     @property
     def world(self) -> BostonWorldConfig:
@@ -143,6 +151,10 @@ class TickParts:
     arrivals: list[tuple[str, str]] = field(default_factory=list)
     disruptions_started: list[DisruptionRecord] = field(default_factory=list)
     disruptions_ended: list[DisruptionRecord] = field(default_factory=list)
+    orders: list[OrderRecord] = field(default_factory=list)
+    decisions: list[MayorDecisionRecord] = field(default_factory=list)
+    routes: RouteTable = field(default_factory=dict)
+    order_links: dict[str, str | None] = field(default_factory=dict)
 
 
 def observation_digest(observation: TickObservation) -> str:
@@ -163,6 +175,7 @@ class HybridRun:
         run_epoch: int,
         sinks: Sequence[HybridSink] = (),
         stream_seeds: Mapping[str, int] | None = None,
+        provider: MayorProvider | None = None,
     ) -> None:
         config = setup.config
         self.setup = setup
@@ -185,6 +198,7 @@ class HybridRun:
         self.end_reason: str | None = None
         self.sinks: list[HybridSink] = list(sinks)
         self._history: OrderedDict[int, tuple[str, TickOutcome]] = OrderedDict()
+        self.desk = MayorDesk(self, provider or BaselineProvider(), setup.inference.mayor_wait_s)
         launch = setup.request.disruptions
         self.planned = (
             disruptions.plan_automatic(
@@ -228,7 +242,7 @@ class HybridRun:
 
     @property
     def controller(self) -> ControllerLabel:
-        return self.mayor_backend
+        return self.desk.controller()
 
     def resident_modes(self) -> ResidentModes:
         return ResidentModes(
@@ -284,8 +298,8 @@ class HybridRun:
             map=self.setup.map_ref,
             mayor_backend=self.mayor_backend,
             authority=self.state.authority,
-            decisions=0,
-            orders=0,
+            decisions=len(self.state.decisions),
+            orders=len(self.state.orders),
         )
 
     def politics_status(self) -> PoliticalStatus:
@@ -443,11 +457,7 @@ class HybridRun:
                     parts.disruptions_ended.append(self.disruption_record(disruption, "ended"))
 
     def mayor_status(self) -> MayorStatus:
-        return MayorStatus(
-            backend=self.mayor_backend,
-            controller=self.controller,
-            state="removed" if self.status == "removed" else "idle",
-        )
+        return self.desk.status(self.state.tick)
 
     # --- lifecycle ---------------------------------------------------------------------
 
@@ -461,6 +471,9 @@ class HybridRun:
             sink.on_end(self, status, reason)
 
     def interrupt(self, reason: str) -> None:
+        """Reset, cancel or shutdown: discard the decision in flight, then end."""
+        if self.status == "running":
+            self.desk.cancel(reason)
         self.end("interrupted", reason)
 
     # --- one tick ----------------------------------------------------------------------
@@ -492,6 +505,9 @@ class HybridRun:
         failures = self.validate(observation)
         if failures:
             raise RunError(422, failures[0].code, "the observation is not valid", failures)
+        await self.desk.await_due(observation.tick)
+        if self.status != "running":  # reset or cancelled while waiting for the mayor
+            raise RunError(409, "run_ended", f"run {self.run_id} ended ({self.status})")
         try:
             outcome, state_hash = self._process(observation)
         except Exception as exc:
@@ -606,11 +622,11 @@ class HybridRun:
     def _process(self, observation: TickObservation) -> tuple[TickOutcome, StateHash]:
         tick = observation.tick
         self.state.tick = tick
-        parts = TickParts()
+        parts = TickParts(routes=dispatch.route_table(observation))
         self.phase_events_and_timers(tick, parts)
         self.phase_infrastructure(observation, parts)
         self.phase_due_removals(tick, parts)
-        self.phase_staged_decisions(tick, parts)
+        self.phase_staged_decisions(observation, parts)
         self.phase_dispatch(observation, parts)
         self.phase_residents_and_politics(observation, parts)
         status = self.phase_metrics_and_removal(observation, parts)
@@ -630,6 +646,7 @@ class HybridRun:
                 and tick >= disruption.end_tick
             ):
                 disruption.status = "recovering"
+        self.desk.phase_timers(tick, parts)
 
     def phase_infrastructure(self, observation: TickObservation, parts: TickParts) -> None:
         """Phase 2: accept the incidents and unit availability the game observed."""
@@ -641,6 +658,7 @@ class HybridRun:
                 state.incidents[item.id] = incident
             else:
                 incident.update(item)
+        parts.order_links = {unit.id: unit.order_id for unit in state.units.values()}
         out = set(observation.out_of_service)
         for unit in state.units.values():
             unit.reported_out = unit.id in out
@@ -653,8 +671,9 @@ class HybridRun:
     def phase_due_removals(self, tick: int, parts: TickParts) -> None:
         """Phase 3: removal outcomes already due (recall vote closing at this tick)."""
 
-    def phase_staged_decisions(self, tick: int, parts: TickParts) -> None:
+    def phase_staged_decisions(self, observation: TickObservation, parts: TickParts) -> None:
         """Phase 4: revalidate and apply decisions whose apply tick is this tick."""
+        self.desk.apply_due(observation.tick, observation, parts)
 
     def phase_dispatch(self, observation: TickObservation, parts: TickParts) -> None:
         """Phase 5: release units of resolved incidents, standing 911 dispatch, retire them."""
@@ -664,12 +683,13 @@ class HybridRun:
             self.state,
             self.setup.catalogs.dispatch,
             tick,
-            dispatch.route_table(observation),
+            parts.routes,
             parts.assignments,
             parts.queue,
             parts.warnings,
         )
         self.retire_resolved(tick)
+        self.desk.track_orders(parts.order_links, tick, parts)
 
     def retire_resolved(self, tick: int) -> None:
         for incident_id in sorted(self.state.incidents):
@@ -696,6 +716,7 @@ class HybridRun:
     ) -> RunStatusLabel:
         """Phase 7: metrics, then newly achieved removal; the duration ends the run."""
         self.state.satisfaction = observation.satisfaction
+        self.desk.phase_outcomes(observation.tick, observation.satisfaction, parts)
         if observation.tick >= self.config.duration:
             self.end_reason = "duration reached"
             return "completed"
@@ -707,6 +728,9 @@ class HybridRun:
         """Phase 8: announce the next tick's disruptions, hash the state, build the outcome."""
         if status == "running":
             self._announce_disruptions(tick, parts)
+            self.desk.opportunity(tick, parts.routes, parts)
+        else:
+            self.desk.cancel(f"the run ended ({status})")
         state_hash = hash_state(self.state.to_state())
         self.last_hash = state_hash
         outcome = TickOutcome(
@@ -719,6 +743,8 @@ class HybridRun:
             assignments=parts.assignments,
             releases=parts.releases,
             queue=parts.queue,
+            orders=parts.orders,
+            decisions=parts.decisions,
             resident_modes=parts.resident_modes,
             disruptions_started=parts.disruptions_started,
             disruptions_ended=parts.disruptions_ended,

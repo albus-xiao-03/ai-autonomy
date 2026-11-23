@@ -132,3 +132,13 @@ def test_schema_exports_the_hybrid_contract() -> None:
         assert root in schema["properties"], root
     assert "TickOutcome" in schema["$defs"]
     ErrorResponse.model_validate({"error": {"code": "tick_gap", "message": "expected tick 5"}})
+
+
+@pytest.mark.req("ARCH-03", "MAY-06")
+def test_examples_are_exactly_what_the_engine_produces(tmp_path: Path) -> None:
+    from tests.engines.contract_story import EXAMPLES as STORY_EXAMPLES
+    from tests.engines.contract_story import build_examples, render
+
+    for name, document in build_examples(tmp_path).items():
+        committed = (STORY_EXAMPLES / f"{name}.json").read_text(encoding="utf-8")
+        assert committed == render(document), f"{name} is stale: run contract_story --write"

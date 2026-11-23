@@ -8,6 +8,7 @@ frozen field needs a new run.
 REQ: SIM-01, SIM-04
 """
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,12 +79,41 @@ class RecordSettings(_Frozen):
     snapshot_interval: int = Field(ge=1)
 
 
+class InferenceSettings(_Frozen):
+    """`inference:` of `config/engine.yaml`: model selection and bounded waits."""
+
+    mayor_local_model: str = Field(min_length=1, max_length=128)
+    mayor_api_model: str = Field(min_length=1, max_length=128)
+    resident_model: str = Field(min_length=1, max_length=128)
+    resident_model_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    mayor_wait_s: float = Field(gt=0, le=600)
+    resident_wait_s: float = Field(gt=0, le=600)
+    resident_batch_max: int = Field(ge=1, le=32)
+
+
 class EngineFile(DataFileModel):
     """`config/engine.yaml`."""
 
     default_scenario: str
     sim: SimSettings
     record: RecordSettings
+    inference: InferenceSettings
+
+
+def effective_inference(settings: InferenceSettings) -> InferenceSettings:
+    """Apply `AIA_MAYOR_MODEL` / `AIA_RESIDENT_MODEL` (local model names on this machine)."""
+    updates: dict[str, str] = {}
+    if mayor := os.environ.get("AIA_MAYOR_MODEL"):
+        updates["mayor_local_model"] = mayor
+    if resident := os.environ.get("AIA_RESIDENT_MODEL"):
+        updates["resident_model"] = resident
+    return settings.model_copy(update=updates) if updates else settings
+
+
+def load_inference_settings(root: Path | None = None) -> InferenceSettings:
+    root = root or repo_root()
+    engine = load_data_file(engine_config_path(root), EngineFile, root=root)
+    return effective_inference(engine.model.inference)
 
 
 class ScenarioFile(DataFileModel):

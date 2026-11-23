@@ -11,7 +11,7 @@
           {
             "id": "inc-000001",
             "kind": "gas_leakage",
-            "severity": 60,
+            "severity": 54,
             "opened_tick": 42,
             "status": "active",
             "x": 360.0,

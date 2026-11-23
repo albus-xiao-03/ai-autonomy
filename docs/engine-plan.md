@@ -2282,8 +2282,8 @@ This appendix is the plan and resume point for the engine work requested in the 
 | C3 | Ollama lock held until the underlying call finishes | done | `0d6212c` | 8 tests in `tests/engines/unit/test_ollama_cancel.py`, fail on the previous code |
 | C4 | Hybrid run core: config, run store, tick pipeline, records, seeded residents | done | `e88a6ef` | 228 pytest; live `aia serve` smoke |
 | C5 | 911 dispatch | done | `238c1f5` | dispatch tests + property test; no inference |
-| C6 | Seven disruptions: catalog, automatic, scheduled, injected | done | (this commit) | 13 disruption tests; effect values proposed, need interface-agent confirmation |
-| C7 | Mayor decisions, exceptional orders, authority cost, legacy routes on the run store | not started | — | |
+| C6 | Seven disruptions: catalog, automatic, scheduled, injected | done | `88295bd` | 13 disruption tests; effect values proposed, need interface-agent confirmation |
+| C7 | Mayor decisions, exceptional orders, authority cost, legacy routes on the run store | done | (this commit) | 262 pytest; live game check against the legacy routes |
 | C8 | Politics: petition, protest, recall vote, removal | not started | — | |
 | C9 | Local resident inference: configured models, installed-artifact check | not started | — | |
 | C10 | Hybrid replay and the Boston trace checked against the game | not started | — | |

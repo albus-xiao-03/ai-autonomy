@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Request, Response
 
+from aiautonomy.engines.contract.decisions import MayorDecisionRecord, OrderRecord
 from aiautonomy.engines.contract.disruptions import (
     DisruptionInjectRequest,
     DisruptionInjectResponse,
@@ -70,3 +71,15 @@ async def inject_disruption(
     if duplicate:
         response.status_code = 200
     return DisruptionInjectResponse(disruption=record, duplicate=duplicate)
+
+
+@router.get("/{run_id}/decisions")
+async def run_decisions(request: Request, run_id: RunIdPath) -> list[MayorDecisionRecord]:
+    run = _runs(request).get(run_id)
+    return [run.desk.decision_record(d) for _, d in sorted(run.state.decisions.items())]
+
+
+@router.get("/{run_id}/orders")
+async def run_orders(request: Request, run_id: RunIdPath) -> list[OrderRecord]:
+    run = _runs(request).get(run_id)
+    return [run.desk.order_record(o) for _, o in sorted(run.state.orders.items())]
