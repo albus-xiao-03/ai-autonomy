@@ -63,6 +63,7 @@ from aiautonomy.engines.hybrid.catalogs import Catalogs
 from aiautonomy.engines.hybrid.desk import MayorDesk
 from aiautonomy.engines.hybrid.dispatch import RouteTable
 from aiautonomy.engines.hybrid.disruptions import Disruption
+from aiautonomy.engines.hybrid.errors import RunError
 from aiautonomy.engines.hybrid.resident_desk import ResidentDesk
 from aiautonomy.engines.hybrid.state import HybridState, Incident
 from aiautonomy.engines.mayor.providers import BaselineProvider, MayorProvider
@@ -75,25 +76,6 @@ HISTORY_TICKS = 64
 """Processed ticks whose outcome is kept for idempotent reposts."""
 GAME_INCIDENT_PREFIX = "game-"
 ENGINE_INCIDENT_PREFIX = "inc-"
-
-
-class RunError(Exception):
-    """A request the run refuses: 404, 409 (conflict with the run state) or 422 (invalid)."""
-
-    def __init__(
-        self,
-        status: int,
-        code: str,
-        message: str,
-        failures: list[Failure] | None = None,
-        entity_id: str | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.status = status
-        self.code = code
-        self.message = message
-        self.failures = failures or []
-        self.entity_id = entity_id
 
 
 class HybridSink(Protocol):

@@ -62,6 +62,10 @@ def test_residents_return_empty_when_ollama_unreachable(
     async def offline(*_args: object, **_kwargs: object) -> dict[str, object]:
         raise OllamaError("offline")
 
+    async def installed(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+        return True, ""
+
+    monkeypatch.setattr(OllamaClient, "installed", installed)
     monkeypatch.setattr(OllamaClient, "chat_json", offline)
     reply = client.post(
         "/api/brain/residents", json={"residents": [{"id": 1, "mood": 20}], "context": {}}

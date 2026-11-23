@@ -268,9 +268,11 @@ A unit serves one incident at a time. Routine dispatch never costs authority.
 
 **Inference stays local**
 
-- The resident model is chosen in `config/engine.yaml`. The default `qwen3:1.7b` runs on loopback Ollama only.
-- A model the game names must equal the configured one.
-- A missing model never falls back to a remote provider.
+- The resident model is chosen in `config/engine.yaml` (`inference.resident_model`, default `qwen3:1.7b`; `AIA_RESIDENT_MODEL` overrides the local tag on a machine whose Ollama names it differently). It runs on loopback Ollama only.
+- Before using the model, the engine checks it is installed (`/api/tags`), and that it matches `inference.resident_model_digest` when one is pinned. A missing or mismatched model gives every resident the routine fallback with the reason. No remote provider is ever tried, even with the API mayor selected.
+- `GET /api/brain/status` reports the configured mayor and resident models and whether each is installed.
+- A model the game names on the legacy routes must equal the configured one (422 `model_not_configured`).
+- The resident code cannot import the paid-API client or the mayor backends; an import-linter contract enforces it.
 
 **Actions** (`ResidentActionName`)
 

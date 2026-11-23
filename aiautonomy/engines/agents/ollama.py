@@ -45,6 +45,15 @@ class OllamaError(RuntimeError):
     """Ollama is unreachable or returned something unusable."""
 
 
+def same_model(installed: str, configured: str) -> bool:
+    """Ollama tags without a version mean `:latest`."""
+
+    def norm(name: str) -> str:
+        return name if ":" in name else f"{name}:latest"
+
+    return norm(installed) == norm(configured)
+
+
 class _Abandoned(OllamaError):
     """The job's caller left before the job sent its model call; never reaches a caller."""
 
@@ -86,6 +95,23 @@ class OllamaClient:
     async def models(self, wait_s: float = 2.0) -> list[str]:
         data = await asyncio.to_thread(self._get, "/api/tags", wait_s)
         return [str(m.get("name")) for m in data.get("models", [])]
+
+    async def installed(
+        self, model: str, digest: str | None = None, wait_s: float = 2.0
+    ) -> tuple[bool, str]:
+        """Whether `model` is installed in this local Ollama (and matches a pinned digest).
+
+        Returns `(installed, reason)`. Unreachable Ollama raises `OllamaError`.
+        """
+        data = await asyncio.to_thread(self._get, "/api/tags", wait_s)
+        for entry in data.get("models", []):
+            name = str(entry.get("name") or entry.get("model") or "")
+            if same_model(name, model):
+                found = entry.get("digest")
+                if digest is not None and found != digest:
+                    return False, f"local model {model} has digest {found}, not the pinned {digest}"
+                return True, ""
+        return False, f"model {model} is not installed in the local Ollama (no remote fallback)"
 
     async def loaded_models(self, wait_s: float = 2.0) -> list[str]:
         """Models Ollama currently holds in memory (`/api/ps`)."""

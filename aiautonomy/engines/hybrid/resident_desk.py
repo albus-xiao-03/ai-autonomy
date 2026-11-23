@@ -28,6 +28,7 @@ from aiautonomy.engines.contract.decisions import (
     ResidentDecisionTicket,
 )
 from aiautonomy.engines.core.canonical import canonical_json
+from aiautonomy.engines.hybrid.errors import RunError
 from aiautonomy.engines.residents.llm import ResidentBatch, ResidentProvider, ResidentReply
 
 if TYPE_CHECKING:
@@ -127,8 +128,6 @@ class ResidentDesk:
     # --- request -------------------------------------------------------------------------
 
     def request(self, body: ResidentDecisionRequest) -> ResidentDecisionAccepted:
-        from aiautonomy.engines.hybrid.run import RunError
-
         run = self.run
         state = run.state
         if body.run_epoch != run.run_epoch:

@@ -56,9 +56,11 @@ def default_choice(request: dict[str, Any]) -> dict[str, Any]:
 class FakeOllama:
     """Usage: `with FakeOllama() as fake: fake.script(valid(), hang()); ... fake.url`."""
 
-    def __init__(self, model: str = DEFAULT_MODEL) -> None:
+    def __init__(self, model: str = DEFAULT_MODEL, digest: str = "0" * 64) -> None:
         self.model = model
+        self.digest = digest
         self.requests: list[dict[str, Any]] = []
+        self.gets: list[str] = []
         self._script: deque[Reply] = deque()
         self._lock = threading.Lock()
         self._release = threading.Event()
@@ -126,10 +128,15 @@ class FakeOllama:
                 self.wfile.write(data)
 
             def do_GET(self) -> None:
+                with fake._lock:
+                    fake.gets.append(self.path)
                 if self.path == "/api/version":
                     self._send(200, {"version": "0.0.0-fake"})
                 elif self.path == "/api/tags":
-                    self._send(200, {"models": [{"name": fake.model, "model": fake.model}]})
+                    entry = {"name": fake.model, "model": fake.model, "digest": fake.digest}
+                    self._send(200, {"models": [entry]})
+                elif self.path == "/api/ps":
+                    self._send(200, {"models": []})
                 else:
                     self._send(404, {"error": "not found"})
 

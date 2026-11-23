@@ -117,6 +117,14 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.importlinter]
 root_package = "aiautonomy"
+include_external_packages = true
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+name = "resident inference stays local: no paid API client, no mayor backends (LOCAL-06)"
+type = "forbidden"
+source_modules = ["aiautonomy.engines.residents", "aiautonomy.engines.hybrid.resident_desk"]
+forbidden_modules = ["anthropic", "aiautonomy.engines.mayor"]
 
 [[tool.importlinter.contracts]]
 name = "core imports no other aiautonomy.engines package"

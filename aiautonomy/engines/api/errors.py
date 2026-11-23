@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from aiautonomy.engines.contract.common import ErrorResponse, Failure
-from aiautonomy.engines.hybrid.run import RunError
+from aiautonomy.engines.hybrid.errors import RunError
 from aiautonomy.engines.world.map_store import MapStoreError
 
 

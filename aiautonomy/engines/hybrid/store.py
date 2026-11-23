@@ -17,7 +17,8 @@ from aiautonomy.engines.contract.runs import RunLaunchRequest
 from aiautonomy.engines.core.datafiles import DataFileError, DataFileRef
 from aiautonomy.engines.hybrid import disruptions
 from aiautonomy.engines.hybrid.catalogs import Catalogs, load_catalogs
-from aiautonomy.engines.hybrid.run import HybridRun, HybridSink, RunError, RunSetup
+from aiautonomy.engines.hybrid.errors import RunError
+from aiautonomy.engines.hybrid.run import HybridRun, HybridSink, RunSetup
 from aiautonomy.engines.mayor.backends import api_available
 from aiautonomy.engines.mayor.providers import (
     ApiProvider,
@@ -59,7 +60,9 @@ def default_provider(backend: MayorBackend, inference: InferenceSettings) -> May
 
 def default_resident_provider(inference: InferenceSettings) -> ResidentProvider:
     """Residents always use local Ollama with the engine-configured model (LOCAL-01)."""
-    return LocalResidentProvider(inference.resident_model, inference.resident_wait_s)
+    return LocalResidentProvider(
+        inference.resident_model, inference.resident_wait_s, inference.resident_model_digest
+    )
 
 
 class RunStore:

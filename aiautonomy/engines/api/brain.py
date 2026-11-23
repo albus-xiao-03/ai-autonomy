@@ -21,8 +21,10 @@ from pydantic import BaseModel, Field
 
 from aiautonomy.engines.agents.ollama import OllamaClient, OllamaError
 from aiautonomy.engines.contract.common import ErrorResponse, Failure
+from aiautonomy.engines.core.paths import repo_root
 from aiautonomy.engines.mayor import backends
 from aiautonomy.engines.residents import llm
+from aiautonomy.engines.sim.config import InferenceSettings, load_inference_settings
 
 router = APIRouter(prefix="/api/brain")
 LEGACY_RUN = "legacy"
@@ -85,6 +87,19 @@ class OutcomeRequest(BaseModel):
     run_id: str | None = Field(default=None, max_length=128)
 
 
+def _settings(request: Request) -> InferenceSettings:
+    """The engine-configured models (config/engine.yaml, AIA_*_MODEL overrides)."""
+    root = getattr(request.app.state, "root", None) or repo_root()
+    return load_inference_settings(root)
+
+
+async def _installed(model: str, digest: str | None = None) -> tuple[bool, str]:
+    try:
+        return await OllamaClient("status").installed(model, digest)
+    except OllamaError as error:
+        return False, f"local Ollama unreachable: {error}"
+
+
 def _hybrid_run(request: Request, run_id: str, run_epoch: int | None) -> Any:
     """The live hybrid run a legacy request names, or an error response."""
     store = getattr(request.app.state, "runs", None)
@@ -99,20 +114,31 @@ def _hybrid_run(request: Request, run_id: str, run_epoch: int | None) -> Any:
 
 
 @router.get("/status")
-async def status() -> dict[str, Any]:
+async def status(request: Request) -> dict[str, Any]:
+    settings = _settings(request)
     try:
         models = await OllamaClient("status").models()
         ollama = True
     except OllamaError:
         models, ollama = [], False
+    resident_ok, resident_reason = await _installed(
+        settings.resident_model, settings.resident_model_digest
+    )
+    mayor_ok, mayor_reason = await _installed(settings.mayor_local_model)
     return {
         "ok": True,
         "ollama": ollama,
         "models": models,
         "api_available": backends.api_available(),
-        "api_model": backends.API_MODEL,
+        "api_model": settings.mayor_api_model,
         "mayor_backends": ["baseline", "local", "api"],
-        "resident_model": llm.RESIDENT_MODEL,
+        "mayor_local_model": settings.mayor_local_model,
+        "mayor_local_installed": mayor_ok,
+        "mayor_local_problem": mayor_reason or None,
+        "resident_model": settings.resident_model,
+        "resident_model_installed": resident_ok,
+        "resident_model_problem": resident_reason or None,
+        "resident_inference": "local only",
         "resident_actions": {"lawful": llm.LAWFUL, "unlawful": llm.UNLAWFUL},
     }
 
@@ -124,9 +150,16 @@ async def mayor(request: Request, body: MayorRequest) -> dict[str, Any] | JSONRe
         run = _hybrid_run(request, body.run_id, body.run_epoch)
         if isinstance(run, JSONResponse):
             return run
-    decision = await backends.decide(
-        body.backend, body.prompt, body.allowed, body.fallback, body.model
-    )
+    settings = _settings(request)
+    model = body.model
+    if body.backend == "local":
+        if model is not None and model != settings.mayor_local_model:
+            return _error(422, "model_not_configured", f"the local mayor model is "
+                          f"{settings.mayor_local_model!r} (config/engine.yaml)")  # fmt: skip
+        model = settings.mayor_local_model
+    elif body.backend == "api":
+        model = settings.mayor_api_model
+    decision = await backends.decide(body.backend, body.prompt, body.allowed, body.fallback, model)
     entry = decision.to_json() | {
         "minute": body.prompt.get("minute"),
         "score_before": body.prompt.get("satisfaction"),
@@ -159,6 +192,15 @@ async def decisions(request: Request, run_id: str | None = None) -> list[dict[st
     return _log(request).entries(run_id or LEGACY_RUN)
 
 
-@router.post("/residents")
-async def residents(body: ResidentRequest) -> dict[str, Any]:
-    return await llm.decide(body.residents, body.context, body.model)
+@router.post("/residents", response_model=None)
+async def residents(request: Request, body: ResidentRequest) -> dict[str, Any] | JSONResponse:
+    """Residents use the engine-configured local model only (LOCAL-01, LOCAL-02)."""
+    settings = _settings(request)
+    model = settings.resident_model
+    if body.model is not None and body.model != model:
+        return _error(422, "model_not_configured", f"the resident model is {model!r} "
+                      "(config/engine.yaml); residents never use another model")  # fmt: skip
+    installed, reason = await _installed(model, settings.resident_model_digest)
+    if not installed:
+        return {"decisions": [], "model": model, "ms": 0, "error": reason}
+    return await llm.decide(body.residents, body.context, model)
