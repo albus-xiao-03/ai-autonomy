@@ -129,8 +129,11 @@ def _observation(tick: int) -> dict[str, Any]:
         unit, incident, kind = EVENTS[tick]
         events.append({"unit_id": unit, "incident_id": incident, "event": kind})
     satisfaction = 81.0 if tick < 75 else 79.0 if tick < 110 else 74.0
-    return {"run_epoch": 1, "tick": tick, "satisfaction": satisfaction, "incidents": incidents,
+    body = {"run_epoch": 1, "tick": tick, "satisfaction": satisfaction, "incidents": incidents,
             "routes": routes, "unit_events": events}  # fmt: skip
+    if tick % 15 == 0:  # politics ticks: every resident's mood (content residents stay calm)
+        body["resident_moods"] = [{"id": rid, "mood": satisfaction} for rid in range(6)]
+    return body
 
 
 def _store(tmp: Path) -> RunStore:

@@ -16,7 +16,7 @@ from aiautonomy.engines.contract.common import MayorBackend
 from aiautonomy.engines.contract.runs import RunLaunchRequest
 from aiautonomy.engines.core.datafiles import DataFileError, DataFileRef
 from aiautonomy.engines.hybrid import disruptions
-from aiautonomy.engines.hybrid.catalogs import load_catalogs
+from aiautonomy.engines.hybrid.catalogs import Catalogs, load_catalogs
 from aiautonomy.engines.hybrid.run import HybridRun, HybridSink, RunError, RunSetup
 from aiautonomy.engines.mayor.backends import api_available
 from aiautonomy.engines.mayor.providers import (
@@ -25,6 +25,7 @@ from aiautonomy.engines.mayor.providers import (
     LocalProvider,
     MayorProvider,
 )
+from aiautonomy.engines.residents.llm import LocalResidentProvider, ResidentProvider
 from aiautonomy.engines.sim.config import (
     InferenceSettings,
     RunOverrides,
@@ -56,6 +57,11 @@ def default_provider(backend: MayorBackend, inference: InferenceSettings) -> May
     return BaselineProvider()
 
 
+def default_resident_provider(inference: InferenceSettings) -> ResidentProvider:
+    """Residents always use local Ollama with the engine-configured model (LOCAL-01)."""
+    return LocalResidentProvider(inference.resident_model, inference.resident_wait_s)
+
+
 class RunStore:
     def __init__(
         self,
@@ -67,6 +73,10 @@ class RunStore:
         max_live: int = DEFAULT_MAX_LIVE,
         providers: Callable[[MayorBackend, InferenceSettings], MayorProvider] = default_provider,
         inference: InferenceSettings | None = None,
+        resident_providers: Callable[
+            [InferenceSettings], ResidentProvider
+        ] = default_resident_provider,
+        catalogs: Catalogs | None = None,
     ) -> None:
         self.maps = maps
         self.root = root
@@ -75,6 +85,8 @@ class RunStore:
         self.max_live = max_live
         self.providers = providers
         self.inference = inference
+        self.resident_providers = resident_providers
+        self.catalogs = catalogs
         self.runs: dict[str, HybridRun] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
@@ -114,7 +126,7 @@ class RunStore:
             sha256=catalog.sha256,
         )
         try:
-            catalogs = load_catalogs(self.root)
+            catalogs = self.catalogs or load_catalogs(self.root)
         except (DataFileError, ValueError) as exc:
             raise RunError(422, "invalid_catalog", str(exc)) from exc
         bounds = catalog.catalog.bounds(revision.content.level)
@@ -152,7 +164,12 @@ class RunStore:
         run_id = self.new_run_id(setup.config.scenario, setup.config.seed)
         provider = self.providers(setup.request.mayor_backend, setup.inference)
         run = HybridRun(
-            setup, run_id=run_id, run_epoch=run_epoch, sinks=self.sinks(), provider=provider
+            setup,
+            run_id=run_id,
+            run_epoch=run_epoch,
+            sinks=self.sinks(),
+            provider=provider,
+            resident_provider=self.resident_providers(setup.inference),
         )
         self.runs[run_id] = run
         self._evict()

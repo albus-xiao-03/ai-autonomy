@@ -70,7 +70,7 @@ class MayorDesk:
     def status(self, tick: int) -> MayorStatus:
         state = self.run.state
         interval = self.run.config.mayor_interval
-        if self.run.status == "removed":
+        if self.run.status == "removed" or state.politics.removal is not None:
             mode = "removed"
         elif state.mayor_offline:
             mode = "offline"

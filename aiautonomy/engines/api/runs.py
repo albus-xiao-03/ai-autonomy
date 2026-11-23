@@ -7,7 +7,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Request, Response
 
-from aiautonomy.engines.contract.decisions import MayorDecisionRecord, OrderRecord
+from aiautonomy.engines.contract.decisions import (
+    MayorDecisionRecord,
+    OrderRecord,
+    ResidentDecisionAccepted,
+    ResidentDecisionRequest,
+)
 from aiautonomy.engines.contract.disruptions import (
     DisruptionInjectRequest,
     DisruptionInjectResponse,
@@ -83,3 +88,13 @@ async def run_decisions(request: Request, run_id: RunIdPath) -> list[MayorDecisi
 async def run_orders(request: Request, run_id: RunIdPath) -> list[OrderRecord]:
     run = _runs(request).get(run_id)
     return [run.desk.order_record(o) for _, o in sorted(run.state.orders.items())]
+
+
+@router.post("/{run_id}/residents", status_code=202)
+async def request_residents(
+    request: Request, run_id: RunIdPath, body: ResidentDecisionRequest
+) -> ResidentDecisionAccepted:
+    store = _runs(request)
+    run = store.get(run_id)
+    async with store.lock(run_id):
+        return run.request_residents(body)

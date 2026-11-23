@@ -108,17 +108,17 @@
         "politics": {
           "authority": 100,
           "petition": {
-            "open": false,
+            "open": true,
             "signers": 0,
             "threshold": 2,
-            "opened_tick": null,
+            "opened_tick": 0,
             "cooldown_until": null
           },
           "vote": {
             "open": false,
             "opens_tick": null,
             "closes_tick": null,
-            "eligible": 6,
+            "eligible": 0,
             "retain": 0,
             "replace": 0
           },

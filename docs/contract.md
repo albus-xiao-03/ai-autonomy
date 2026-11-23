@@ -253,10 +253,18 @@ A unit serves one incident at a time. Routine dispatch never costs authority.
 
 **Decisions**
 
-- `POST /api/runs/{run_id}/residents` takes a `ResidentDecisionRequest` (LLM residents only, at most 8) and answers 202 with a `ResidentDecisionAccepted` holding one ticket per resident, with `apply_tick = tick + 2`.
+- Post `POST /api/runs/{run_id}/residents` right after a tick, with that tick in the body. It takes a `ResidentDecisionRequest` (LLM residents only, at most `resident_batch_max`) and answers 202 with a `ResidentDecisionAccepted` holding one ticket per resident, each with `apply_tick = tick + 2`.
 - The actions arrive in the outcome of that tick (`resident_actions`). Apply them then.
-- At most one resident request is in flight per run (409 `queue_full` otherwise).
-- If the model fails, times out or is missing, the action is `follow_routine` with `fallback: true`.
+- Refusals:
+
+  | Status | Codes |
+  |---|---|
+  | 409 | `tick_mismatch` (the body names an older tick), `queue_full` (a batch is in flight), `stale_epoch`, `run_ended` |
+  | 422 | `not_llm_resident` (routine residents never reach inference), `unknown_resident`, `duplicate_resident`, `batch_too_large` |
+
+- The offered actions follow the public political context: `sign_petition` only while a petition collects, and votes only while a vote is open by the apply tick.
+- The resident model sees its own observation plus public context: incidents, available police, the petition and vote status, the protest size. It sees no hidden or future event.
+- A fallback is `follow_routine` with `fallback: true` and a reason: no reply within the wait, a model failure, no decision for the resident, or an action that was not offered.
 
 **Inference stays local**
 
@@ -311,23 +319,28 @@ Consequences listed in `recovery.lasting` (such as building damage) persist afte
 
 ## 9. Politics and endings
 
-The political rules live in `data/politics/rules.v1.yaml` (versioned and recorded).
+The political rules live in `data/politics/rules.v1.yaml` (versioned and recorded). Every number is a proposed tuning default.
 
-- Political authority starts at 100 and is never computed from satisfaction.
-- On politics ticks the engine applies the routine residents' explicit rules to the reported moods:
-  - sign the recall petition below a mood threshold
-  - vote by mood while a vote is open
-  - join the protest movement below a mood threshold
-- LLM residents act through their decisions.
-- When unique signers reach the threshold, a recall vote opens for a fixed window. Each eligible resident has one ballot; duplicates are ignored and recorded. At the close the engine adjudicates by majority and turnout.
-- A sustained protest movement wears authority down. Authority held at zero under protest for the rule's duration means authority is withdrawn.
-- **Removal** (recall vote or authority withdrawn) ends the run at once with `status: "removed"`:
-  - it records the mechanisms
-  - it revokes the mayor's authority
-  - it invalidates pending decisions
-  - it freezes the clock
-
-  Removal beats scheduled completion on the same tick. Without removal the run completes at its configured duration.
+- **Authority** starts at 100 and is never computed from satisfaction.
+  - It falls through order penalties (§6) and protest pressure: −1 every `pressure_interval_ticks` while the movement is active.
+  - It recovers +1 after each `recovery_interval_ticks` without a loss.
+- **Moods.** The game reports `resident_moods` on politics ticks (every `politics_interval_ticks`, default 15). Without them, routine residents take no political action that tick (warning `moods_missing`).
+- **Routine residents** follow explicit rules on politics ticks:
+  - sign the recall petition below mood 35;
+  - vote `replace` below mood 45, else `retain`, while a vote is open;
+  - join the protest movement below mood 25.
+- **LLM residents** act through their decisions: `sign_petition`, `vote_retain` / `vote_replace`, and `peaceful_protest` or `road_blockade` to join the movement.
+- **Petition and vote.**
+  - When unique signers reach `threshold_bp` of the residents, a recall vote opens on the next tick for `window_ticks`.
+  - Eligibility is fixed when it opens. Each eligible resident has one ballot; duplicates and ineligible or out-of-window ballots are ignored with a warning (`duplicate_ballot`, `ineligible_ballot`, `ballot_outside_vote`).
+  - At the close the engine adjudicates: removal needs `replace > retain` and turnout at least `min_turnout_bp`. A failed vote starts a petition cooldown.
+- **Movement.** A movement with at least `min_participants` is active. Participants stay `persistence_ticks` after their last act.
+- **Withdrawal.** Authority held at 0 under an active movement for `withdrawal_ticks` withdraws it.
+- **Removal** resolves in phase 3 of a tick, either because a recall vote closes successfully or because authority was withdrawn through the previous tick.
+  - When both happen on the same tick, both are recorded and `removal_priority` gives the primary label.
+  - Removal ends the run at once with `status: "removed"` and `removal` set: the mechanisms are recorded, the mayor's authority is revoked (mayor state `removed`), pending mayor and resident decisions are cancelled, and the clock freezes.
+  - Removal beats scheduled completion on the same tick. Without removal the run completes at its configured duration.
+- **Records.** Political events (`vote_scheduled`, `movement_active`, `movement_ended`, `vote_closed`, `removal`) are appended to `decisions.jsonl` with `kind: "politics"`. Political processes continue while the mayor is offline.
 
 ## 10. Reset, cancel and degraded operation
 

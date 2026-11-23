@@ -6,7 +6,8 @@ unlawful actions; the game applies the consequences (police, authority loss, clo
 
 import json
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from aiautonomy.engines.agents.ollama import OllamaClient, OllamaError
 
@@ -76,3 +77,83 @@ async def decide(
             "ms": int((time.monotonic() - started) * 1000),
             "error": str(error)[:200],
         }
+
+
+# --- run-scoped resident decisions (docs/contract.md §7) ----------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ResidentBatch:
+    """One batched request: LLM residents' observations, the offered actions, public context."""
+
+    batch_id: str
+    residents: list[dict[str, Any]]
+    offered: list[str]
+    context: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ResidentReply:
+    decisions: dict[int, tuple[str, str]]
+    """Resident id → (action, thought) for every valid entry the model returned."""
+    model: str
+    error: str | None = None
+    latency_ms: int = 0
+
+
+class ResidentProvider(Protocol):
+    model: str
+
+    async def decide(self, batch: ResidentBatch) -> ResidentReply: ...
+
+
+class LocalResidentProvider:
+    """Local Ollama only (loopback client, the one-model lock); never a remote provider."""
+
+    def __init__(self, model: str, wait_s: float) -> None:
+        self.model = model
+        self.wait_s = wait_s
+
+    async def decide(self, batch: ResidentBatch) -> ResidentReply:
+        started = time.monotonic()
+        ids = [int(r["id"]) for r in batch.residents]
+        schema = {
+            "type": "object",
+            "properties": {
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer", "enum": ids},
+                            "action": {"type": "string", "enum": batch.offered},
+                            "thought": {"type": "string", "maxLength": 140},
+                        },
+                        "required": ["id", "action", "thought"],
+                    },
+                }
+            },
+            "required": ["decisions"],
+        }
+        user = json.dumps(
+            {"city": batch.context, "residents": batch.residents, "allowed": batch.offered},
+            sort_keys=True,
+        )
+        try:
+            client = OllamaClient("resident")
+            data = await client.chat_json(
+                self.model, SYSTEM, user, schema, wait_s=self.wait_s,
+                num_predict=60 * len(ids) + 60,
+            )  # fmt: skip
+        except OllamaError as error:
+            return ResidentReply({}, self.model, str(error)[:200], _ms(started))
+        decisions: dict[int, tuple[str, str]] = {}
+        for item in data.get("decisions", []) if isinstance(data, dict) else []:
+            rid, action = item.get("id"), item.get("action")
+            if rid in ids and action in batch.offered and rid not in decisions:
+                decisions[rid] = (action, str(item.get("thought", ""))[:140])
+        return ResidentReply(decisions, self.model, None, _ms(started))
+
+
+def _ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)

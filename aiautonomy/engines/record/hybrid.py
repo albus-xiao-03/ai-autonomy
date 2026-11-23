@@ -119,6 +119,11 @@ class HybridRecorder:
             "duration": run.config.duration,
             "final_hash": run.last_hash.value,
             "authority": run.state.authority,
+            "removal": (
+                run.state.politics.removal.model_dump(mode="json")
+                if run.state.politics.removal
+                else None
+            ),
             "summary": run.summary().model_dump(mode="json"),
         }
         write_json_atomic(self.run_dir / FINAL_REPORT, report)

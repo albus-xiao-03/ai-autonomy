@@ -21,6 +21,8 @@ from aiautonomy.engines.contract.runs import IncidentObservation
 from aiautonomy.engines.core.ids import IdCounters
 from aiautonomy.engines.hybrid.decisions import Decision, Order
 from aiautonomy.engines.hybrid.disruptions import Disruption
+from aiautonomy.engines.hybrid.politics import Politics
+from aiautonomy.engines.hybrid.resident_desk import ResidentDecision
 
 
 @dataclass(slots=True)
@@ -140,6 +142,9 @@ class HybridState:
     pending_decision: str | None = None
     mayor_offline: bool = False
     outage_hold: str | None = None
+    politics: Politics = field(default_factory=Politics)
+    resident_decisions: dict[str, ResidentDecision] = field(default_factory=dict)
+    resident_batch: str | None = None
 
     @classmethod
     def initial(

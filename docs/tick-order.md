@@ -55,11 +55,11 @@ Then the same eight phases run for that tick:
 |---|---|---|
 | 1 | `phase_events_and_timers` | Start and end disruptions of record; expire order priorities; open or close votes |
 | 2 | `phase_infrastructure` | Accept the observed incidents and unit availability; apply unit events (arrivals, clears) |
-| 3 | `phase_due_removals` | A recall vote closing at `t` |
+| 3 | `phase_due_removals` | Removal outcomes due at `t`: a recall vote closing now, or authority withdrawn through `t − 1`. A removal skips straight to phase 8 |
 | 4 | `phase_staged_decisions` | Mayor and resident decisions whose apply tick is `t`: revalidate, then commit or reject atomically |
 | 5 | `phase_dispatch` | Standing 911 dispatch; retire resolved incidents |
-| 6 | `phase_residents_and_politics` | Seeded modes for joining residents; petitions, protest movement, ballots |
-| 7 | `phase_metrics_and_removal` | Satisfaction; authority withdrawal; duration or removal ends the run |
+| 6 | `phase_residents_and_politics` | LLM residents' political acts, routine rules on politics ticks (petition, ballots, movement), protest pressure and recovery of authority; seeded modes for joining residents |
+| 7 | `phase_metrics_and_removal` | Satisfaction and the outcome window of decisions; the duration ends the run unless a removal happened in phase 3 |
 | 8 | `publish` | Hash the state, build the outcome, schedule the next mayor opportunity, record |
 
 Everything the engine decides at tick `t` takes effect in the game from tick `t + 1`.

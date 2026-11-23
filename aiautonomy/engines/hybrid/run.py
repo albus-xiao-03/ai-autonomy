@@ -31,6 +31,9 @@ from aiautonomy.engines.contract.decisions import (
     AuthorityChange,
     MayorDecisionRecord,
     OrderRecord,
+    ResidentAction,
+    ResidentDecisionAccepted,
+    ResidentDecisionRequest,
 )
 from aiautonomy.engines.contract.dispatch import Assignment, QueueEntry, Release
 from aiautonomy.engines.contract.disruptions import (
@@ -38,12 +41,7 @@ from aiautonomy.engines.contract.disruptions import (
     DisruptionRecord,
 )
 from aiautonomy.engines.contract.maps import MapRef, MapRevision
-from aiautonomy.engines.contract.politics import (
-    PetitionStatus,
-    PoliticalStatus,
-    ProtestStatus,
-    VoteStatus,
-)
+from aiautonomy.engines.contract.politics import PoliticalStatus, RemovalRecord
 from aiautonomy.engines.contract.runs import (
     AuthorityView,
     CatalogRef,
@@ -59,22 +57,22 @@ from aiautonomy.engines.contract.runs import (
 )
 from aiautonomy.engines.core.canonical import StateHash, canonical_json, hash_state
 from aiautonomy.engines.core.datafiles import DataFileRef
-from aiautonomy.engines.core.money import apply_bp
 from aiautonomy.engines.core.rng import KeyedRng, derive_stream_seeds
-from aiautonomy.engines.hybrid import dispatch, disruptions, residents
+from aiautonomy.engines.hybrid import dispatch, disruptions, politics, residents
 from aiautonomy.engines.hybrid.catalogs import Catalogs
 from aiautonomy.engines.hybrid.desk import MayorDesk
 from aiautonomy.engines.hybrid.dispatch import RouteTable
 from aiautonomy.engines.hybrid.disruptions import Disruption
+from aiautonomy.engines.hybrid.resident_desk import ResidentDesk
 from aiautonomy.engines.hybrid.state import HybridState, Incident
 from aiautonomy.engines.mayor.providers import BaselineProvider, MayorProvider
+from aiautonomy.engines.residents.llm import LocalResidentProvider, ResidentProvider
 from aiautonomy.engines.sim.config import InferenceSettings, RunConfig
 from aiautonomy.engines.world.boston import BostonWorldConfig
 from aiautonomy.engines.world.maps import LevelBounds
 
 HISTORY_TICKS = 64
 """Processed ticks whose outcome is kept for idempotent reposts."""
-INITIAL_AUTHORITY = 100
 GAME_INCIDENT_PREFIX = "game-"
 ENGINE_INCIDENT_PREFIX = "inc-"
 
@@ -155,6 +153,9 @@ class TickParts:
     decisions: list[MayorDecisionRecord] = field(default_factory=list)
     routes: RouteTable = field(default_factory=dict)
     order_links: dict[str, str | None] = field(default_factory=dict)
+    resident_actions: list[ResidentAction] = field(default_factory=list)
+    acts: list[tuple[int, str]] = field(default_factory=list)
+    removal: RemovalRecord | None = None
 
 
 def observation_digest(observation: TickObservation) -> str:
@@ -176,6 +177,7 @@ class HybridRun:
         sinks: Sequence[HybridSink] = (),
         stream_seeds: Mapping[str, int] | None = None,
         provider: MayorProvider | None = None,
+        resident_provider: ResidentProvider | None = None,
     ) -> None:
         config = setup.config
         self.setup = setup
@@ -192,13 +194,24 @@ class HybridRun:
         self.rng = KeyedRng(self.stream_seeds)
         llm_ids = residents.assign_llm(config.population, config.llm_count, self.rng)
         self.state = HybridState.initial(
-            setup.map_revision.content, config.population, llm_ids, INITIAL_AUTHORITY
+            setup.map_revision.content,
+            config.population,
+            llm_ids,
+            setup.catalogs.politics.authority.initial,
         )
         self.status: RunStatusLabel = "running"
         self.end_reason: str | None = None
         self.sinks: list[HybridSink] = list(sinks)
         self._history: OrderedDict[int, tuple[str, TickOutcome]] = OrderedDict()
         self.desk = MayorDesk(self, provider or BaselineProvider(), setup.inference.mayor_wait_s)
+        inference = setup.inference
+        self.resident_desk = ResidentDesk(
+            self,
+            resident_provider
+            or LocalResidentProvider(inference.resident_model, inference.resident_wait_s),
+            inference.resident_wait_s,
+            inference.resident_batch_max,
+        )
         launch = setup.request.disruptions
         self.planned = (
             disruptions.plan_automatic(
@@ -298,20 +311,23 @@ class HybridRun:
             map=self.setup.map_ref,
             mayor_backend=self.mayor_backend,
             authority=self.state.authority,
+            removal=self.state.politics.removal,
             decisions=len(self.state.decisions),
             orders=len(self.state.orders),
         )
 
     def politics_status(self) -> PoliticalStatus:
-        population = len(self.state.resident_ids)
-        return PoliticalStatus(
-            authority=self.state.authority,
-            petition=PetitionStatus(
-                open=False, signers=0, threshold=max(1, apply_bp(population, 3000))
-            ),
-            vote=VoteStatus(open=False, eligible=population, retain=0, replace=0),
-            protest=ProtestStatus(participants=0, active=False, pressure_ticks=0),
+        state = self.state
+        return politics.status(
+            state.politics,
+            self.setup.catalogs.politics,
+            state.authority,
+            len(state.resident_ids),
+            state.tick,
         )
+
+    def request_residents(self, body: ResidentDecisionRequest) -> ResidentDecisionAccepted:
+        return self.resident_desk.request(body)
 
     # --- disruptions --------------------------------------------------------------------
 
@@ -474,6 +490,7 @@ class HybridRun:
         """Reset, cancel or shutdown: discard the decision in flight, then end."""
         if self.status == "running":
             self.desk.cancel(reason)
+            self.resident_desk.cancel(reason)
         self.end("interrupted", reason)
 
     # --- one tick ----------------------------------------------------------------------
@@ -506,6 +523,7 @@ class HybridRun:
         if failures:
             raise RunError(422, failures[0].code, "the observation is not valid", failures)
         await self.desk.await_due(observation.tick)
+        await self.resident_desk.await_due(observation.tick)
         if self.status != "running":  # reset or cancelled while waiting for the mayor
             raise RunError(409, "run_ended", f"run {self.run_id} ended ({self.status})")
         try:
@@ -626,6 +644,9 @@ class HybridRun:
         self.phase_events_and_timers(tick, parts)
         self.phase_infrastructure(observation, parts)
         self.phase_due_removals(tick, parts)
+        if parts.removal is not None:  # removal in phase 3 skips straight to publishing
+            self.state.satisfaction = observation.satisfaction
+            return self.publish(tick, "removed", parts)
         self.phase_staged_decisions(observation, parts)
         self.phase_dispatch(observation, parts)
         self.phase_residents_and_politics(observation, parts)
@@ -670,10 +691,16 @@ class HybridRun:
 
     def phase_due_removals(self, tick: int, parts: TickParts) -> None:
         """Phase 3: removal outcomes already due (recall vote closing at this tick)."""
+        result = politics.TickPolitics(authority=self.state.authority)
+        politics.resolve_due(self.state.politics, self.setup.catalogs.politics, tick, result)
+        self._record_politics(result.events)
+        if result.removal is not None:
+            self._remove(result.removal, parts)
 
     def phase_staged_decisions(self, observation: TickObservation, parts: TickParts) -> None:
         """Phase 4: revalidate and apply decisions whose apply tick is this tick."""
         self.desk.apply_due(observation.tick, observation, parts)
+        parts.acts = self.resident_desk.apply_due(observation.tick, parts)
 
     def phase_dispatch(self, observation: TickObservation, parts: TickParts) -> None:
         """Phase 5: release units of resolved incidents, standing 911 dispatch, retire them."""
@@ -699,6 +726,7 @@ class HybridRun:
 
     def phase_residents_and_politics(self, observation: TickObservation, parts: TickParts) -> None:
         """Phase 6: residents who joined (seeded top-up of LLM modes), then politics."""
+        self._politics(observation, parts)
         joined = sorted(observation.residents_joined)
         if not joined:
             return
@@ -722,6 +750,56 @@ class HybridRun:
             return "completed"
         return "running"
 
+    def _record_politics(self, events: list[dict[str, Any]]) -> None:
+        for event in events:
+            for sink in self.sinks:
+                sink.on_decision(self, {"kind": "politics"} | event)
+
+    def _remove(self, removal: RemovalRecord, parts: TickParts) -> None:
+        """END-03: record the mechanisms; the run freezes as removed at this tick."""
+        self.state.politics.removal = removal
+        parts.removal = removal
+        self.end_reason = removal.detail
+        self._record_politics([{"event": "removal"} | removal.model_dump(mode="json")])
+
+    def _politics(self, observation: TickObservation, parts: TickParts) -> None:
+        """Phase 6: LLM residents' political acts, routine rules, then movement and authority."""
+        state = self.state
+        rules = self.setup.catalogs.politics
+        tick = observation.tick
+        result = politics.TickPolitics(authority=state.authority)
+        if any(c.reason == "excess_order" and c.tick == tick for c in parts.authority_changes):
+            state.politics.last_loss_tick = tick
+        for resident, action in parts.acts:
+            if action == "sign_petition":
+                politics.sign(state.politics, resident, tick)
+            elif action in ("vote_retain", "vote_replace"):
+                politics.cast(state.politics, resident, action.removeprefix("vote_"), tick, result)
+            elif action in ("peaceful_protest", "road_blockade"):
+                politics.join(state.politics, resident, tick)
+        if tick % self.world.politics_interval_ticks == 0:
+            llm = set(state.llm_ids)
+            routine = [rid for rid in state.resident_ids if rid not in llm]
+            if observation.resident_moods is None:
+                if routine:
+                    parts.warnings.append(
+                        Failure(
+                            code="moods_missing",
+                            message="no resident moods on a politics "
+                            "tick: routine residents took no political action",
+                        )
+                    )
+            else:
+                moods = {m.id: m.mood for m in observation.resident_moods}
+                politics.routine_politics(state.politics, rules, tick, moods, routine, result)
+        politics.advance(state.politics, rules, tick, state.resident_ids, state.authority, result)
+        if result.authority != state.authority or result.changes:
+            state.authority = result.authority
+            state.authority_log.extend(result.changes)
+            parts.authority_changes.extend(result.changes)
+        parts.warnings.extend(result.warnings)
+        self._record_politics(result.events)
+
     def publish(
         self, tick: int, status: RunStatusLabel, parts: TickParts
     ) -> tuple[TickOutcome, StateHash]:
@@ -730,7 +808,9 @@ class HybridRun:
             self._announce_disruptions(tick, parts)
             self.desk.opportunity(tick, parts.routes, parts)
         else:
-            self.desk.cancel(f"the run ended ({status})")
+            reason = "the mayor was removed" if status == "removed" else f"the run ended ({status})"
+            self.desk.cancel(reason)
+            self.resident_desk.cancel(reason)
         state_hash = hash_state(self.state.to_state())
         self.last_hash = state_hash
         outcome = TickOutcome(
@@ -745,6 +825,8 @@ class HybridRun:
             queue=parts.queue,
             orders=parts.orders,
             decisions=parts.decisions,
+            resident_actions=parts.resident_actions,
+            removal=parts.removal,
             resident_modes=parts.resident_modes,
             disruptions_started=parts.disruptions_started,
             disruptions_ended=parts.disruptions_ended,
